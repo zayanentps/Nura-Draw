@@ -1,0 +1,6 @@
+{
+  "name": "CorelDraw Web - Vector Studio & Real-Time Collaboration",
+  "description": "Professional web-based vector graphics suite inspired by CorelDRAW with Bezier pen, shape tools, layering docker, property inspector, CMYK color palette, SVG/PDF export, and real-time multiplayer collaboration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

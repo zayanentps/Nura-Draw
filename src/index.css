@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* 70% Black Charcoal Dark Theme Overrides for CorelDRAW Command & Property Bars */
+.corel-dark-bar {
+  color: #f1f5f9;
+}
+
+.corel-dark-bar > span,
+.corel-dark-bar .text-zinc-800,
+.corel-dark-bar .text-zinc-700,
+.corel-dark-bar .text-zinc-600,
+.corel-dark-bar .text-zinc-500 {
+  color: #e2e8f0;
+}
+
+/* Keep crisp dark text inside light input/select boxes and light pill containers */
+.corel-dark-bar .bg-white,
+.corel-dark-bar .bg-white *,
+.corel-dark-bar .bg-\[\#f0f1f3\],
+.corel-dark-bar .bg-\[\#f0f1f3\] *,
+.corel-dark-bar .bg-\[\#e5f1fb\],
+.corel-dark-bar .bg-\[\#e5f1fb\] *,
+.corel-dark-bar .bg-\[\#d0e1f9\],
+.corel-dark-bar .bg-\[\#d0e1f9\] *,
+.corel-dark-bar .bg-\[\#cce8ff\],
+.corel-dark-bar .bg-\[\#cce8ff\] *,
+.corel-dark-bar .bg-\[\#dcfce7\],
+.corel-dark-bar .bg-\[\#dcfce7\] * {
+  color: #18181b;
+}
+
+.corel-dark-bar button:not([class*="bg-white"]):not([class*="bg-[#"]):hover {
+  background-color: #60646d;
+}
+
+.corel-dark-bar .bg-\[\#c2c5cb\] {
+  background-color: #6b707a;
+}
