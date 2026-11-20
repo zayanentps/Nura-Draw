@@ -39,7 +39,7 @@ interface CorelHeaderProps {
   onToggleGrid: () => void;
   showRulers: boolean;
   onToggleRulers: () => void;
-  onExport: (format: 'svg' | 'pdf' | 'png' | 'json') => void;
+  onExport: (format: 'dwg' | 'svg' | 'pdf' | 'png' | 'json') => void;
   onOpenJSON: () => void;
   onNewDocument: () => void;
   collaborators: CollaboratorUser[];
@@ -172,6 +172,10 @@ export const CorelHeader: React.FC<CorelHeaderProps> = ({
                   <button onClick={() => onExport('png')} className="w-full text-left px-3 py-1.5 hover:bg-emerald-600 hover:text-white flex items-center gap-2">
                     <FileImage className="w-3.5 h-3.5 text-blue-400" />
                     <span>PNG (Raster Image)</span>
+                  </button>
+                  <button onClick={() => onExport('dwg')} className="w-full text-left px-3 py-1.5 hover:bg-emerald-600 hover:text-white flex items-center gap-2">
+                    <FileCode className="w-3.5 h-3.5 text-amber-400" />
+                    <span>DWG (AutoCAD Drawing)</span>
                   </button>
                 </div>
               )}

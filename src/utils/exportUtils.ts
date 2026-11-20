@@ -22,6 +22,7 @@ export const COREL_EXPORT_FORMATS: CorelExportFormat[] = [
   { id: 'jpg', short: 'JPG', ext: 'jpg', label: 'JPG - JPEG Bitmaps', mime: 'image/jpeg', pinned: true, kind: 'raster' },
   { id: 'png', short: 'PNG', ext: 'png', label: 'PNG - Portable Network Graphics', mime: 'image/png', pinned: true, kind: 'raster' },
   { id: 'ai', short: 'AI', ext: 'ai', label: 'AI - Adobe Illustrator', mime: 'application/postscript', pinned: true, kind: 'vector' },
+  { id: 'dwg', short: 'DWG', ext: 'dwg', label: 'DWG - AutoCAD Drawing (.dwg)', mime: 'application/acad', pinned: true, kind: 'cad' },
 
   // Full CorelDRAW format list
   { id: 'ai_full', short: 'AI', ext: 'ai', label: 'AI - Adobe Illustrator', mime: 'application/postscript', kind: 'vector' },
@@ -36,7 +37,6 @@ export const COREL_EXPORT_FORMATS: CorelExportFormat[] = [
   { id: 'cpt78', short: 'CPT', ext: 'cpt', label: 'CPT - Corel PHOTO-PAINT 7/8 Image', mime: 'application/octet-stream', kind: 'raster' },
   { id: 'cur', short: 'CUR', ext: 'cur', label: 'CUR - Windows 3.x/NT Cursor Resource', mime: 'image/x-icon', kind: 'raster' },
   { id: 'doc', short: 'DOC', ext: 'doc', label: 'DOC - MS Word for Windows 6/7', mime: 'application/msword', kind: 'document' },
-  { id: 'dwg', short: 'DWG', ext: 'dwg', label: 'DWG - AutoCAD', mime: 'application/acad', kind: 'cad' },
   { id: 'dxf', short: 'DXF', ext: 'dxf', label: 'DXF - AutoCAD', mime: 'application/dxf', kind: 'cad' },
   { id: 'emf', short: 'EMF', ext: 'emf', label: 'EMF - Enhanced Windows Metafile', mime: 'image/emf', kind: 'vector' },
   { id: 'eps', short: 'EPS', ext: 'eps', label: 'EPS - Encapsulated PostScript', mime: 'application/postscript', kind: 'vector' },
@@ -374,35 +374,250 @@ async function encodeIcoOrCur(el: HTMLCanvasElement, isCursor: boolean): Promise
   return new Blob([out], { type: 'image/x-icon' });
 }
 
-function buildDxfString(canvas: fabric.Canvas, pageConfig: PageConfig): string {
-  const lines: string[] = ['0', 'SECTION', '2', 'HEADER', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'];
+function resolveAciColor(color: unknown): number {
+  const rgb = parseCssColorToRgb(color);
+  if (!rgb) return 7; // white/black default in CAD
+  const { r, g, b } = rgb;
+  if (r > 200 && g < 80 && b < 80) return 1; // Red
+  if (r > 200 && g > 200 && b < 80) return 2; // Yellow
+  if (r < 80 && g > 180 && b < 80) return 3; // Green
+  if (r < 80 && g > 180 && b > 180) return 4; // Cyan
+  if (r < 80 && g < 80 && b > 180) return 5; // Blue
+  if (r > 180 && g < 80 && b > 180) return 6; // Magenta
+  return 7;
+}
+
+function buildDxfString(
+  canvas: fabric.Canvas,
+  pageConfig: PageConfig,
+  settings?: Partial<AdvancedExportSettings>
+): string {
   const h = pageConfig.height;
-  canvas.getObjects().forEach((obj) => {
-    const br = obj.getBoundingRect();
-    const x1 = br.left.toFixed(2);
-    const y1 = (h - br.top).toFixed(2);
-    const x2 = (br.left + br.width).toFixed(2);
-    const y2 = (h - (br.top + br.height)).toFixed(2);
+  const w = pageConfig.width;
+  const entities: string[] = [];
+
+  const toCadPoint = (pt: fabric.Point, m: fabric.TMat2D) => {
+    const t = pt.transform(m);
+    return { x: t.x, y: h - t.y };
+  };
+
+  const emitLwPolyline = (pts: Array<{ x: number; y: number }>, closed: boolean, aci: number) => {
+    if (pts.length < 2) return;
+    entities.push('0', 'LWPOLYLINE', '8', '0', '62', String(aci), '90', String(pts.length), '70', closed ? '1' : '0');
+    pts.forEach((p) => {
+      entities.push('10', p.x.toFixed(3), '20', p.y.toFixed(3));
+    });
+  };
+
+  const emitObject = (obj: fabric.FabricObject, parentMatrix?: fabric.TMat2D) => {
+    if (obj.visible === false || (obj as any).excludeFromExport) return;
+    const localM = obj.calcOwnMatrix();
+    const worldM = parentMatrix
+      ? fabric.util.multiplyTransformMatrices(parentMatrix, localM)
+      : obj.calcTransformMatrix();
+
+    if (obj.type === 'group') {
+      const grp = obj as fabric.Group;
+      grp.getObjects().forEach((child) => emitObject(child, worldM));
+      return;
+    }
+
+    const aci = resolveAciColor((obj as any).stroke && (obj as any).stroke !== 'transparent' ? (obj as any).stroke : (obj as any).fill);
+
+    if (obj.type === 'line') {
+      const line = obj as fabric.Line;
+      const pts = line.calcLinePoints();
+      const p1 = toCadPoint(new fabric.Point(pts.x1, pts.y1), worldM);
+      const p2 = toCadPoint(new fabric.Point(pts.x2, pts.y2), worldM);
+      entities.push(
+        '0', 'LINE', '8', '0', '62', String(aci),
+        '10', p1.x.toFixed(3), '20', p1.y.toFixed(3), '30', '0.0',
+        '11', p2.x.toFixed(3), '21', p2.y.toFixed(3), '31', '0.0'
+      );
+      return;
+    }
 
     if (obj.type === 'circle' || obj.type === 'ellipse') {
-      const cx = (br.left + br.width / 2).toFixed(2);
-      const cy = (h - (br.top + br.height / 2)).toFixed(2);
-      const r = (Math.min(br.width, br.height) / 2).toFixed(2);
-      lines.push('0', 'CIRCLE', '8', '0', '10', cx, '20', cy, '40', r);
-    } else if (obj.type === 'i-text' || obj.type === 'text') {
-      const txt = ((obj as any).text || '').replace(/\r?\n/g, ' ');
-      lines.push('0', 'TEXT', '8', '0', '10', x1, '20', y2, '40', String((obj as any).fontSize || 16), '1', txt);
-    } else {
-      lines.push(
-        '0', 'LINE', '8', '0', '10', x1, '20', y1, '11', x2, '21', y1,
-        '0', 'LINE', '8', '0', '10', x2, '20', y1, '11', x2, '21', y2,
-        '0', 'LINE', '8', '0', '10', x2, '20', y2, '11', x1, '21', y2,
-        '0', 'LINE', '8', '0', '10', x1, '20', y2, '11', x1, '21', y1
-      );
+      const rx = obj.type === 'circle' ? ((obj as fabric.Circle).radius || 0) : ((obj as fabric.Ellipse).rx || 0);
+      const ry = obj.type === 'circle' ? ((obj as fabric.Circle).radius || 0) : ((obj as fabric.Ellipse).ry || 0);
+      const center = toCadPoint(new fabric.Point(0, 0), worldM);
+      const rightPt = toCadPoint(new fabric.Point(rx, 0), worldM);
+      const topPt = toCadPoint(new fabric.Point(0, -ry), worldM);
+      const rxWorld = Math.hypot(rightPt.x - center.x, rightPt.y - center.y);
+      const ryWorld = Math.hypot(topPt.x - center.x, topPt.y - center.y);
+
+      if (Math.abs(rxWorld - ryWorld) < 0.05 && rxWorld > 0) {
+        entities.push(
+          '0', 'CIRCLE', '8', '0', '62', String(aci),
+          '10', center.x.toFixed(3), '20', center.y.toFixed(3), '30', '0.0',
+          '40', rxWorld.toFixed(3)
+        );
+      } else if (rxWorld > 0 && ryWorld > 0) {
+        const majorVec =
+          rxWorld >= ryWorld
+            ? { dx: rightPt.x - center.x, dy: rightPt.y - center.y, ratio: ryWorld / rxWorld }
+            : { dx: topPt.x - center.x, dy: topPt.y - center.y, ratio: rxWorld / ryWorld };
+        entities.push(
+          '0', 'ELLIPSE', '8', '0', '62', String(aci),
+          '10', center.x.toFixed(3), '20', center.y.toFixed(3), '30', '0.0',
+          '11', majorVec.dx.toFixed(3), '21', majorVec.dy.toFixed(3), '31', '0.0',
+          '40', Math.max(0.001, Math.min(1, majorVec.ratio)).toFixed(4),
+          '41', '0.0', '42', (Math.PI * 2).toFixed(6)
+        );
+      }
+      return;
     }
+
+    if (obj.type === 'rect') {
+      const rw = (obj.width || 0) / 2;
+      const rh = (obj.height || 0) / 2;
+      const corners = [
+        toCadPoint(new fabric.Point(-rw, -rh), worldM),
+        toCadPoint(new fabric.Point(rw, -rh), worldM),
+        toCadPoint(new fabric.Point(rw, rh), worldM),
+        toCadPoint(new fabric.Point(-rw, rh), worldM),
+      ];
+      emitLwPolyline(corners, true, aci);
+      return;
+    }
+
+    if (obj.type === 'polygon' || obj.type === 'polyline') {
+      const poly = obj as fabric.Polygon;
+      const offset = poly.pathOffset || { x: 0, y: 0 };
+      const pts = (poly.points || []).map((p) =>
+        toCadPoint(new fabric.Point(p.x - offset.x, p.y - offset.y), worldM)
+      );
+      emitLwPolyline(pts, obj.type === 'polygon', aci);
+      return;
+    }
+
+    if (obj.type === 'path') {
+      const pathObj = obj as fabric.Path;
+      const offset = pathObj.pathOffset || { x: 0, y: 0 };
+      const cmds = pathObj.path || [];
+      let subPts: Array<{ x: number; y: number }> = [];
+      let curX = 0;
+      let curY = 0;
+      let startX = 0;
+      let startY = 0;
+
+      const pushLocal = (lx: number, ly: number) => {
+        subPts.push(toCadPoint(new fabric.Point(lx - offset.x, ly - offset.y), worldM));
+      };
+
+      for (const cmd of cmds) {
+        const op = String(cmd[0] || '');
+        if (op === 'M') {
+          if (subPts.length >= 2) emitLwPolyline(subPts, false, aci);
+          subPts = [];
+          curX = Number(cmd[1]);
+          curY = Number(cmd[2]);
+          startX = curX;
+          startY = curY;
+          pushLocal(curX, curY);
+        } else if (op === 'L') {
+          curX = Number(cmd[1]);
+          curY = Number(cmd[2]);
+          pushLocal(curX, curY);
+        } else if (op === 'Q') {
+          const cx = Number(cmd[1]);
+          const cy = Number(cmd[2]);
+          const ex = Number(cmd[3]);
+          const ey = Number(cmd[4]);
+          for (let s = 1; s <= 10; s++) {
+            const t = s / 10;
+            const mt = 1 - t;
+            pushLocal(mt * mt * curX + 2 * mt * t * cx + t * t * ex, mt * mt * curY + 2 * mt * t * cy + t * t * ey);
+          }
+          curX = ex;
+          curY = ey;
+        } else if (op === 'C') {
+          const x1 = Number(cmd[1]);
+          const y1 = Number(cmd[2]);
+          const x2 = Number(cmd[3]);
+          const y2 = Number(cmd[4]);
+          const ex = Number(cmd[5]);
+          const ey = Number(cmd[6]);
+          for (let s = 1; s <= 12; s++) {
+            const t = s / 12;
+            const mt = 1 - t;
+            const px = mt * mt * mt * curX + 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t * ex;
+            const py = mt * mt * mt * curY + 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t * ey;
+            pushLocal(px, py);
+          }
+          curX = ex;
+          curY = ey;
+        } else if (op === 'Z' || op === 'z') {
+          if (subPts.length >= 2) emitLwPolyline(subPts, true, aci);
+          subPts = [];
+          curX = startX;
+          curY = startY;
+        }
+      }
+      if (subPts.length >= 2) emitLwPolyline(subPts, false, aci);
+      return;
+    }
+
+    if (obj.type === 'i-text' || obj.type === 'text' || obj.type === 'textbox') {
+      const decomp = fabric.util.qrDecompose(worldM);
+      const pos = toCadPoint(new fabric.Point(0, 0), worldM);
+      const txt = String((obj as any).text || '').replace(/\r?\n/g, ' ');
+      const fontHeight = ((obj as any).fontSize || 16) * Math.abs(decomp.scaleY || 1);
+      entities.push(
+        '0', 'TEXT', '8', '0', '62', String(aci),
+        '10', pos.x.toFixed(3), '20', pos.y.toFixed(3), '30', '0.0',
+        '40', fontHeight.toFixed(2),
+        '50', (-decomp.angle).toFixed(2),
+        '1', txt
+      );
+      return;
+    }
+
+    const br = obj.getBoundingRect();
+    emitLwPolyline(
+      [
+        { x: br.left, y: h - br.top },
+        { x: br.left + br.width, y: h - br.top },
+        { x: br.left + br.width, y: h - (br.top + br.height) },
+        { x: br.left, y: h - (br.top + br.height) },
+      ],
+      true,
+      aci
+    );
+  };
+
+  withIdentityViewport(canvas, () => {
+    const activeObj = canvas.getActiveObject();
+    const isSelectionExport =
+      activeObj &&
+      (settings?.exportRange === 'selection' || settings?.pageSizeMode === 'selected_objects');
+    const objs = isSelectionExport
+      ? activeObj.type === 'activeselection'
+        ? (activeObj as fabric.ActiveSelection).getObjects()
+        : [activeObj]
+      : canvas.getObjects();
+    objs.forEach((o) => emitObject(o));
   });
-  lines.push('0', 'ENDSEC', '0', 'EOF');
-  return lines.join('\n');
+
+  const header = [
+    '0', 'SECTION',
+    '2', 'HEADER',
+    '9', '$ACADVER', '1', 'AC1015',
+    '9', '$INSUNITS', '70', '4',
+    '9', '$EXTMIN', '10', '0.0', '20', '0.0', '30', '0.0',
+    '9', '$EXTMAX', '10', w.toFixed(2), '20', h.toFixed(2), '30', '0.0',
+    '0', 'ENDSEC',
+    '0', 'SECTION',
+    '2', 'TABLES',
+    '0', 'TABLE', '2', 'LAYER', '70', '1',
+    '0', 'LAYER', '2', '0', '70', '0', '62', '7', '6', 'CONTINUOUS',
+    '0', 'ENDTAB',
+    '0', 'ENDSEC',
+    '0', 'SECTION',
+    '2', 'ENTITIES',
+  ];
+
+  return [...header, ...entities, '0', 'ENDSEC', '0', 'EOF'].join('\n');
 }
 
 let _colorParseCtx: CanvasRenderingContext2D | null = null;
@@ -1211,7 +1426,7 @@ export async function exportWithSettings(
     );
     blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
   } else if (format.ext === 'dxf' || format.ext === 'dwg') {
-    blob = new Blob([buildDxfString(canvas, pageConfig)], { type: format.mime });
+    blob = new Blob([buildDxfString(canvas, pageConfig, settings)], { type: format.mime });
   } else if (format.ext === 'eps' || format.ext === 'ai') {
     const wPt = bounds.width * PX_TO_PT;
     const hPt = bounds.height * PX_TO_PT;
@@ -1312,6 +1527,12 @@ export function exportAsPNG(canvas: fabric.Canvas, pageConfig: PageConfig, multi
 export function exportAsPDF(canvas: fabric.Canvas, pageConfig: PageConfig, filename = 'design.pdf') {
   const blob = buildPdfBlob(canvas, pageConfig, filename, DEFAULT_ADVANCED_EXPORT_SETTINGS);
   triggerDownloadBlob(blob, filename);
+}
+
+export function exportAsDWG(canvas: fabric.Canvas, pageConfig: PageConfig, filename = 'design.dwg') {
+  const finalName = filename.toLowerCase().endsWith('.dwg') ? filename : `${filename}.dwg`;
+  const cadString = buildDxfString(canvas, pageConfig);
+  triggerDownloadBlob(new Blob([cadString], { type: 'application/acad' }), finalName);
 }
 
 function utf8ToBase64(str: string): string {
@@ -1479,6 +1700,105 @@ export async function importFromJSON(
       });
       canvas.renderAll();
       return true;
+    }
+
+    // 4. Fallback: CAD DWG/DXF ASCII entity stream
+    if (trimmed.includes('ENTITIES') && (trimmed.includes('SECTION') || trimmed.includes('LWPOLYLINE') || trimmed.includes('LINE'))) {
+      const rawLines = text.split(/\r?\n/);
+      const pairs: Array<{ code: number; value: string }> = [];
+      for (let i = 0; i + 1 < rawLines.length; i += 2) {
+        const code = parseInt(rawLines[i].trim(), 10);
+        if (!Number.isNaN(code)) {
+          pairs.push({ code, value: rawLines[i + 1].trim() });
+        }
+      }
+      const pageH = canvas.getHeight() || 792;
+      const imported: fabric.FabricObject[] = [];
+      let inEntities = false;
+      let curType = '';
+      let entityTags: Array<{ code: number; value: string }> = [];
+
+      const flushEntity = () => {
+        if (!curType || entityTags.length === 0) return;
+        const getNum = (c: number, def = 0) => {
+          const found = entityTags.find((t) => t.code === c);
+          return found ? Number(found.value) || def : def;
+        };
+        const getStr = (c: number, def = '') => {
+          const found = entityTags.find((t) => t.code === c);
+          return found ? found.value : def;
+        };
+
+        if (curType === 'LINE') {
+          const x1 = getNum(10);
+          const y1 = pageH - getNum(20);
+          const x2 = getNum(11);
+          const y2 = pageH - getNum(21);
+          imported.push(new fabric.Line([x1, y1, x2, y2], { stroke: '#111827', strokeWidth: 1.5, fill: 'transparent' }));
+        } else if (curType === 'CIRCLE') {
+          const cx = getNum(10);
+          const cy = pageH - getNum(20);
+          const r = Math.max(1, getNum(40, 10));
+          imported.push(
+            new fabric.Circle({
+              left: cx - r,
+              top: cy - r,
+              radius: r,
+              fill: 'transparent',
+              stroke: '#111827',
+              strokeWidth: 1.5,
+            })
+          );
+        } else if (curType === 'LWPOLYLINE') {
+          const xs = entityTags.filter((t) => t.code === 10).map((t) => Number(t.value) || 0);
+          const ys = entityTags.filter((t) => t.code === 20).map((t) => pageH - (Number(t.value) || 0));
+          const isClosed = (getNum(70, 0) & 1) === 1;
+          const pts = xs.map((x, idx) => ({ x, y: ys[idx] ?? pageH }));
+          if (pts.length >= 2) {
+            const Ctor = isClosed ? fabric.Polygon : fabric.Polyline;
+            imported.push(new Ctor(pts, { fill: 'transparent', stroke: '#111827', strokeWidth: 1.5 }));
+          }
+        } else if (curType === 'TEXT') {
+          const x = getNum(10);
+          const y = pageH - getNum(20);
+          const fontSize = Math.max(6, getNum(40, 16));
+          const angle = -getNum(50, 0);
+          const content = getStr(1, '');
+          if (content) {
+            imported.push(new fabric.IText(content, { left: x, top: y, fontSize, angle, fill: '#111827' }));
+          }
+        }
+      };
+
+      for (const p of pairs) {
+        if (p.code === 2 && p.value === 'ENTITIES') {
+          inEntities = true;
+          continue;
+        }
+        if (inEntities && p.code === 0 && p.value === 'ENDSEC') {
+          flushEntity();
+          inEntities = false;
+          continue;
+        }
+        if (!inEntities) continue;
+        if (p.code === 0) {
+          flushEntity();
+          curType = p.value;
+          entityTags = [];
+        } else {
+          entityTags.push(p);
+        }
+      }
+
+      if (imported.length > 0) {
+        canvas.clear();
+        imported.forEach((o) => {
+          disableObjectCaching(o);
+          canvas.add(o);
+        });
+        canvas.renderAll();
+        return true;
+      }
     }
 
     return false;

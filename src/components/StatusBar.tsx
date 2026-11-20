@@ -1,12 +1,13 @@
 import React from 'react';
 import { Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Layers } from 'lucide-react';
-import { PageConfig, ThemeMode } from '../types';
+import { PageConfig, ThemeMode, ZoomPresetMode } from '../types';
 
 interface StatusBarProps {
   cursorPos: { x: number; y: number };
   selectionLabel: string;
   zoomLevel: number;
   onZoomChange: (zoom: number) => void;
+  onZoomMode?: (mode: ZoomPresetMode) => void;
   pages: PageConfig[];
   activePageIndex: number;
   onSelectPage: (index: number) => void;
@@ -21,6 +22,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   selectionLabel,
   zoomLevel,
   onZoomChange,
+  onZoomMode,
   pages,
   activePageIndex,
   onSelectPage,
@@ -124,9 +126,44 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           >
             <ZoomIn className="w-3 h-3" />
           </button>
-          <span className={`font-mono min-w-[3.25rem] text-right text-[10px] ${isDark ? 'text-zinc-300' : 'text-zinc-800 font-semibold'}`}>
-            {Math.round(zoomLevel * 100).toLocaleString()}%
-          </span>
+          <select
+            value={Math.max(1, Math.round(zoomLevel * 100))}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'to_page' || val === 'to_width' || val === 'to_height' || val === 'to_fit') {
+                onZoomMode?.(val);
+              } else {
+                onZoomChange(Math.min(4096, Math.max(0.01, Number(val) / 100)));
+              }
+            }}
+            title="Zoom Levels (To Page / Percentage)"
+            className={`font-mono text-[10px] bg-transparent outline-none cursor-pointer px-1 py-0.5 rounded-xs border ${
+              isDark
+                ? 'border-[#646870] text-zinc-200 bg-[#3e4147]'
+                : 'border-[#cfd1d6] text-zinc-800 bg-white font-semibold'
+            }`}
+          >
+            <optgroup label="Fit Options">
+              <option value="to_page">To Page (Shift+F4)</option>
+              <option value="to_width">To Width</option>
+              <option value="to_height">To Height</option>
+              <option value="to_fit">To Fit (F4)</option>
+            </optgroup>
+            <optgroup label="Zoom Levels">
+              {(() => {
+                const curPct = Math.max(1, Math.round(zoomLevel * 100));
+                const presets = [10, 25, 50, 75, 100, 150, 200, 400, 800, 1600, 3200];
+                const list = presets.includes(curPct)
+                  ? presets
+                  : [...presets, curPct].sort((a, b) => a - b);
+                return list.map((pct) => (
+                  <option key={pct} value={pct}>
+                    {pct.toLocaleString()}%
+                  </option>
+                ));
+              })()}
+            </optgroup>
+          </select>
         </div>
 
         {/* CorelDRAW Status Bar Fill & Outline Indicator */}

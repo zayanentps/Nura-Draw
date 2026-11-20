@@ -397,7 +397,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     if (selectedOnly && hasSelection) {
       setSettings((s) => ({ ...s, exportRange: 'selection', pageSizeMode: 'selected_objects' }));
     }
-    if (skipSettingsDialog || selectedFormat.ext === 'ndr') {
+    if (
+      isSaveMode ||
+      skipSettingsDialog ||
+      selectedFormat.ext === 'ndr' ||
+      selectedFormat.ext === 'dwg' ||
+      selectedFormat.ext === 'dxf'
+    ) {
       performActualExport();
     } else {
       setStep('settings');
@@ -560,7 +566,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     .filter((entry) => entry.folderId === selectedFolderId || selectedFolderId === 'downloads')
                     .map((entry) => {
                       const base = entry.name.replace(/\.[^/.]+$/, '');
-                      const isNdr = entry.name.toLowerCase().endsWith('.ndr');
+                      const lowerName = entry.name.toLowerCase();
+                      const isNdr = lowerName.endsWith('.ndr');
+                      const isDwg = lowerName.endsWith('.dwg') || lowerName.endsWith('.dxf');
                       const isSelected = fileName.trim().toLowerCase() === base.toLowerCase();
                       return (
                         <button
@@ -586,6 +594,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                               className="w-11 h-12 object-contain mb-1.5"
                               draggable={false}
                             />
+                          ) : isDwg ? (
+                            <div className="w-11 h-12 rounded-sm flex flex-col items-center justify-center shadow-xs mb-1.5 border bg-sky-50 border-sky-300 text-sky-700 font-bold text-[10px]">
+                              <FileText className="w-5 h-5 mb-0.5" />
+                              <span>DWG</span>
+                            </div>
                           ) : (
                             <div className="w-11 h-12 rounded-sm flex items-center justify-center shadow-xs mb-1.5 border bg-zinc-100 border-zinc-300 text-zinc-600">
                               <FileText className="w-6 h-6" />

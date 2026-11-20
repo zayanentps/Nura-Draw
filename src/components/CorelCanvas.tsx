@@ -16,7 +16,10 @@ import {
   CropToolsConfig,
   CropActionType,
   CropRegion,
+  ZoomPresetMode,
+  SymmetryConfig,
 } from '../types';
+import { getSymmetryAxisLines } from '../utils/symmetryEngine';
 import {
   ensureObjectId,
   disableObjectCaching,
@@ -600,6 +603,12 @@ interface CorelCanvasProps {
   onOpenProperties?: () => void;
   onAlignToPixelGrid?: () => void;
   onCreateSymmetry?: () => void;
+  onEditSymmetry?: (target?: any) => void;
+  onFinishSymmetry?: () => void;
+  onRemoveSymmetry?: () => void;
+  onBreakSymmetryLink?: () => void;
+  symmetryEditingConfig?: SymmetryConfig | null;
+  onUpdateSymmetryConfig?: (cfg: Partial<SymmetryConfig>) => void;
   onCreateSymbol?: () => void;
   // Curve editing state & action registration
   onCurveStateChange?: (state: CurveEditState) => void;
@@ -608,6 +617,7 @@ interface CorelCanvasProps {
   cropToolsConfig?: CropToolsConfig;
   onUpdateCropToolsConfig?: (cfg: Partial<CropToolsConfig>) => void;
   onRegisterCropActionHandler?: (handler: (action: CropActionType) => void) => void;
+  onRegisterZoomModeHandler?: (handler: (mode: ZoomPresetMode) => void) => void;
   // View menu display states
   viewQualityMode?: ViewQualityMode;
   proofColors?: boolean;
@@ -691,12 +701,19 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   onOpenProperties,
   onAlignToPixelGrid,
   onCreateSymmetry,
+  onEditSymmetry,
+  onFinishSymmetry,
+  onRemoveSymmetry,
+  onBreakSymmetryLink,
+  symmetryEditingConfig = null,
+  onUpdateSymmetryConfig,
   onCreateSymbol,
   onCurveStateChange,
   onRegisterCurveActionHandler,
   cropToolsConfig = { eraserSize: 18, eraserNib: 'round', knifeAutoGap: false, cropRegion: null },
   onUpdateCropToolsConfig,
   onRegisterCropActionHandler,
+  onRegisterZoomModeHandler,
   viewQualityMode = 'enhanced',
   proofColors = false,
   simulateOverprints = false,
@@ -1644,6 +1661,95 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       }
     });
   }, [onRegisterCropActionHandler, applyCropRegionToCanvas, onUpdateCropToolsConfig]);
+
+  // Register Zoom Preset Mode handler (To Page, To Width, To Height, To Fit)
+  useEffect(() => {
+    if (!onRegisterZoomModeHandler) return;
+    onRegisterZoomModeHandler((mode: ZoomPresetMode) => {
+      const canvas = fabricRef.current;
+      const deskW = deskRef.current?.clientWidth || canvas?.getWidth() || 800;
+      const deskH = deskRef.current?.clientHeight || canvas?.getHeight() || 600;
+      const cfg = pageConfigRef.current;
+      const pageW = Math.max(40, cfg.width || 794);
+      const pageH = Math.max(40, cfg.height || 1123);
+
+      if (mode === 'to_fit' && canvas) {
+        const objs = canvas.getObjects().filter((o) => o.visible !== false);
+        if (objs.length > 0) {
+          const curZoom = canvas.getZoom() || 1;
+          const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+          let minX = Infinity;
+          let minY = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          objs.forEach((o) => {
+            const b = o.getBoundingRect();
+            const sx1 = (b.left - vpt[4]) / curZoom;
+            const sy1 = (b.top - vpt[5]) / curZoom;
+            const sx2 = (b.left + b.width - vpt[4]) / curZoom;
+            const sy2 = (b.top + b.height - vpt[5]) / curZoom;
+            minX = Math.min(minX, sx1);
+            minY = Math.min(minY, sy1);
+            maxX = Math.max(maxX, sx2);
+            maxY = Math.max(maxY, sy2);
+          });
+          const cw = Math.max(20, maxX - minX);
+          const ch = Math.max(20, maxY - minY);
+          const nextZoom = Math.max(
+            0.05,
+            Math.min(4096, Number(Math.min((deskW * 0.82) / cw, (deskH * 0.82) / ch).toFixed(4)))
+          );
+          const centerX = (minX + maxX) / 2;
+          const centerY = (minY + maxY) / 2;
+          setPan({
+            x: Math.round(deskW / 2 - centerX * nextZoom),
+            y: Math.round(deskH / 2 - centerY * nextZoom),
+          });
+          onZoomChange(nextZoom);
+          return;
+        }
+      }
+
+      if (mode === 'to_width') {
+        const nextZoom = Math.max(
+          0.05,
+          Math.min(4096, Number(((deskW * 0.92) / pageW).toFixed(4)))
+        );
+        setPan({
+          x: Math.round((deskW - pageW * nextZoom) / 2),
+          y: Math.round(
+            pageH * nextZoom < deskH ? (deskH - pageH * nextZoom) / 2 : 24
+          ),
+        });
+        onZoomChange(nextZoom);
+        return;
+      }
+
+      if (mode === 'to_height') {
+        const nextZoom = Math.max(
+          0.05,
+          Math.min(4096, Number(((deskH * 0.92) / pageH).toFixed(4)))
+        );
+        setPan({
+          x: Math.round((deskW - pageW * nextZoom) / 2),
+          y: Math.round((deskH - pageH * nextZoom) / 2),
+        });
+        onZoomChange(nextZoom);
+        return;
+      }
+
+      // Default / 'to_page' (and empty-canvas 'to_fit')
+      const nextZoom = Math.max(
+        0.05,
+        Math.min(4096, Number(Math.min((deskW * 0.9) / pageW, (deskH * 0.9) / pageH).toFixed(4)))
+      );
+      setPan({
+        x: Math.round((deskW - pageW * nextZoom) / 2),
+        y: Math.round((deskH - pageH * nextZoom) / 2),
+      });
+      onZoomChange(nextZoom);
+    });
+  }, [onRegisterZoomModeHandler, onZoomChange]);
 
   // Mouse handlers for drawing vector shapes and panning
   const handleMouseDown = useCallback(
@@ -3715,12 +3821,24 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
+      const isSymGroup = target && (target as any).isSymmetryGroup;
+      if (isSymGroup && onEditSymmetry) {
+        onEditSymmetry(target);
+        return;
+      }
+
+      if (symmetryEditingConfig && (!opt || !opt.target) && onFinishSymmetry) {
+        onFinishSymmetry();
+        return;
+      }
+
       // Double-clicking a regular Group with Pick tool enters Group Editing mode (supports nested groups!)
       if (
         (activeTool === 'pick' || activeTool === 'freehand_pick') &&
         target &&
         target.type === 'group' &&
         !isPC &&
+        !isSymGroup &&
         !(target as any).isTextOnPath &&
         (target as any).customType !== 'qrcode' &&
         onGroupEditEnter
@@ -3779,6 +3897,9 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       onPowerClipEdit,
       isPowerClipEditing,
       onPowerClipFinish,
+      onEditSymmetry,
+      symmetryEditingConfig,
+      onFinishSymmetry,
       isGroupEditing,
       onGroupEditEnter,
       onGroupEditFinish,
@@ -5346,6 +5467,137 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             </svg>
           )}
 
+          {/* Symmetry Editing Axis Lines & Interactive Pivot/Rotation Handle Overlay */}
+          {symmetryEditingConfig && (() => {
+            const axisLines = getSymmetryAxisLines(symmetryEditingConfig, 2600);
+            const pivotX = pan.x + symmetryEditingConfig.centerX * zoomLevel;
+            const pivotY = pan.y + symmetryEditingConfig.centerY * zoomLevel;
+            const rad = ((symmetryEditingConfig.angleDeg || 0) * Math.PI) / 180;
+            const ux = -Math.sin(rad);
+            const uy = Math.cos(rad);
+            const rotHandleX = pivotX + ux * 54;
+            const rotHandleY = pivotY + uy * 54;
+
+            const startDragPivot = (e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const startClientX = e.clientX;
+              const startClientY = e.clientY;
+              const origCenterX = symmetryEditingConfig.centerX;
+              const origCenterY = symmetryEditingConfig.centerY;
+
+              const onMove = (me: MouseEvent) => {
+                const dx = (me.clientX - startClientX) / (zoomLevel || 1);
+                const dy = (me.clientY - startClientY) / (zoomLevel || 1);
+                onUpdateSymmetryConfig?.({
+                  centerX: Number((origCenterX + dx).toFixed(2)),
+                  centerY: Number((origCenterY + dy).toFixed(2)),
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            };
+
+            const startDragRotate = (e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const deskRect = deskRef.current?.getBoundingClientRect();
+              if (!deskRect) return;
+              const onMove = (me: MouseEvent) => {
+                const sx = me.clientX - deskRect.left;
+                const sy = me.clientY - deskRect.top;
+                const sceneX = (sx - pan.x) / (zoomLevel || 1);
+                const sceneY = (sy - pan.y) / (zoomLevel || 1);
+                const vx = sceneX - symmetryEditingConfig.centerX;
+                const vy = sceneY - symmetryEditingConfig.centerY;
+                if (Math.hypot(vx, vy) > 4) {
+                  let deg = (Math.atan2(-vx, vy) * 180) / Math.PI;
+                  if (me.shiftKey) {
+                    deg = Math.round(deg / 15) * 15;
+                  }
+                  onUpdateSymmetryConfig?.({ angleDeg: Number(deg.toFixed(1)) });
+                }
+              };
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            };
+
+            return (
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible">
+                {axisLines.map((ln, idx) => (
+                  <g key={`sym-axis-${idx}`}>
+                    <line
+                      x1={pan.x + ln.x1 * zoomLevel}
+                      y1={pan.y + ln.y1 * zoomLevel}
+                      x2={pan.x + ln.x2 * zoomLevel}
+                      y2={pan.y + ln.y2 * zoomLevel}
+                      stroke="#ffffff"
+                      strokeOpacity="0.8"
+                      strokeWidth="2.8"
+                    />
+                    <line
+                      x1={pan.x + ln.x1 * zoomLevel}
+                      y1={pan.y + ln.y1 * zoomLevel}
+                      x2={pan.x + ln.x2 * zoomLevel}
+                      y2={pan.y + ln.y2 * zoomLevel}
+                      stroke="#0078d7"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 4"
+                    />
+                  </g>
+                ))}
+                {/* Connecting stalk to rotation handle */}
+                <line
+                  x1={pivotX}
+                  y1={pivotY}
+                  x2={rotHandleX}
+                  y2={rotHandleY}
+                  stroke="#0078d7"
+                  strokeWidth="1.4"
+                />
+                {/* Draggable Symmetry Axis Pivot Handle */}
+                <g
+                  onMouseDown={startDragPivot}
+                  className="pointer-events-auto cursor-move"
+                >
+                  <circle
+                    cx={pivotX}
+                    cy={pivotY}
+                    r={7}
+                    fill="#ffffff"
+                    stroke="#0078d7"
+                    strokeWidth="2"
+                  />
+                  <circle cx={pivotX} cy={pivotY} r={2.5} fill="#0078d7" />
+                  <title>Drag to move Symmetry Mirror Line</title>
+                </g>
+                {/* Draggable Symmetry Axis Rotation Handle */}
+                <g
+                  onMouseDown={startDragRotate}
+                  className="pointer-events-auto cursor-grab"
+                >
+                  <circle
+                    cx={rotHandleX}
+                    cy={rotHandleY}
+                    r={5.5}
+                    fill="#0078d7"
+                    stroke="#ffffff"
+                    strokeWidth="1.6"
+                  />
+                  <title>Drag to rotate Symmetry Mirror Line (Hold Shift for 15° snap)</title>
+                </g>
+              </svg>
+            );
+          })()}
+
           {/* Collaborative Remote Cursors Overlay */}
           {collaborators
             .filter((user) => user.id !== currentUser.id && user.cursor)
@@ -5546,6 +5798,14 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           onOpenPageSetup={onOpenPageSetup}
           onAlignToPixelGrid={onAlignToPixelGrid}
           onCreateSymmetry={onCreateSymmetry}
+          onEditSymmetry={() => {
+            const active = fabricRef.current?.getActiveObject();
+            if (onEditSymmetry) onEditSymmetry(active);
+          }}
+          onFinishSymmetry={onFinishSymmetry}
+          onRemoveSymmetry={onRemoveSymmetry}
+          onBreakSymmetryLink={onBreakSymmetryLink}
+          isSymmetryEditing={!!symmetryEditingConfig}
           onCreateSymbol={onCreateSymbol}
         />
       )}

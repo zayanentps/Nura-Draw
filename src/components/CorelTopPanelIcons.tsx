@@ -802,3 +802,79 @@ export const IconEncodeText: React.FC<{ className?: string }> = ({ className = '
   </svg>
 );
 
+// Nudge Distance 4-way diamond/square icon (matching CorelDRAW image_205e352e.png)
+export const IconNudgeDistance: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <rect x="6" y="6" width="4" height="4" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" />
+    {/* Top triangle */}
+    <path d="M8 1.2 L10.3 4.2 L5.7 4.2 Z" fill="#1e293b" />
+    {/* Bottom triangle */}
+    <path d="M8 14.8 L10.3 11.8 L5.7 11.8 Z" fill="#1e293b" />
+    {/* Left triangle */}
+    <path d="M1.2 8 L4.2 5.7 L4.2 10.3 Z" fill="#1e293b" />
+    {/* Right triangle */}
+    <path d="M14.8 8 L11.8 5.7 L11.8 10.3 Z" fill="#1e293b" />
+  </svg>
+);
+
+// Autofit Page icon (matching CorelDRAW image_387e6bbe.png)
+export const IconAutofitPage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    {/* Page rectangle with slight top-left corner dog-ear */}
+    <path d="M5.2 3.5 L12.5 3.5 L12.5 12.5 L3.5 12.5 L3.5 5.2 Z" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" strokeLinejoin="round" />
+    {/* Center solid circle dot */}
+    <circle cx="8" cy="8" r="1.9" fill="#1e293b" />
+    {/* Top-right diagonal arrow */}
+    <path d="M12.5 3.5 L15 1 M12.8 1 L15 1 L15 3.2" stroke="#1e293b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    {/* Bottom-left diagonal arrow */}
+    <path d="M3.5 12.5 L1 15 M3.2 15 L1 15 L1 12.8" stroke="#1e293b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+// Symmetry Tool Icons (Create, Edit, Finish, Remove, Break Link)
+export const IconSymmetryCreate: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
+    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
+    <circle cx="12.5" cy="3.5" r="2.5" fill="#16a34a" />
+    <path d="M12.5 2.2V4.8M11.2 3.5H13.8" stroke="#ffffff" strokeWidth="1.1" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconSymmetryEdit: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
+    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M10.5 13.5 L14 10 L15 11 L11.5 14.5 L10 14.8 Z" fill="#f59e0b" stroke="#92400e" strokeWidth="0.7" />
+  </svg>
+);
+
+export const IconSymmetryFinish: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
+    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
+    <circle cx="12.5" cy="12.5" r="2.7" fill="#16a34a" />
+    <path d="M11.2 12.5 L12.2 13.5 L14 11.5" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconSymmetryRemove: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 1.2" />
+    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#334155" stroke="#1e293b" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="0.9" strokeDasharray="1.5 1" strokeLinejoin="round" />
+    <path d="M10.5 10.5 L14.5 14.5 M14.5 10.5 L10.5 14.5" stroke="#dc2626" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconSymmetryBreak: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path d="M5.5 4.5 L2 8 L5.5 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M10.5 4.5 L14 8 L10.5 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
+    <path d="M7.5 2 L8.5 5.5 L7 8 L8.5 10.5 L7.5 14" stroke="#dc2626" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+

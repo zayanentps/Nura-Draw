@@ -67,6 +67,15 @@ export interface CropToolsConfig {
 
 export type CropActionType = 'apply_crop' | 'clear_crop';
 
+export type ZoomPresetMode = 'to_page' | 'to_width' | 'to_height' | 'to_fit';
+
+export interface SymmetryConfig {
+  centerX: number;
+  centerY: number;
+  angleDeg: number; // 0 = vertical mirror axis, 90 = horizontal mirror axis
+  mirrorLines: number; // 1..12 mirror planes
+}
+
 import type { UnitType, PagePreset } from '../utils/units';
 
 export type { UnitType, PagePreset };
@@ -84,6 +93,8 @@ export interface PageConfig {
   showPageBorder?: boolean;
   dpi?: number;
   facingPages?: boolean;
+  nudgeDistance?: number; // nudge step distance in px
+  autofitMargin?: number; // autofit page margin in px
 }
 
 export interface LayerObject {

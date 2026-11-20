@@ -80,6 +80,13 @@ import {
   IconAlignToBaseline,
   IconChangeCase,
   IconEncodeText,
+  IconNudgeDistance,
+  IconAutofitPage,
+  IconSymmetryCreate,
+  IconSymmetryEdit,
+  IconSymmetryFinish,
+  IconSymmetryRemove,
+  IconSymmetryBreak,
 } from './CorelTopPanelIcons';
 import {
   Undo2,
@@ -114,6 +121,8 @@ import {
   Spline,
   QrCode,
   Timer,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { formatDurationHMS, TimerStatus } from './ProjectTimerWindow';
 import {
@@ -129,6 +138,8 @@ import {
   DimensionConfig,
   CropToolsConfig,
   CropActionType,
+  ZoomPresetMode,
+  SymmetryConfig,
 } from '../types';
 import {
   IconDimension,
@@ -181,12 +192,13 @@ interface CorelTopPanelProps {
   onZoomOut: () => void;
   onZoomFit: () => void;
   onZoomSet: (zoom: number) => void;
+  onZoomMode?: (mode: ZoomPresetMode) => void;
   zoomLevel: number;
   showGrid: boolean;
   onToggleGrid: () => void;
   showRulers: boolean;
   onToggleRulers: () => void;
-  onExport: (format: 'ndr' | 'svg' | 'pdf' | 'png' | 'json') => void;
+  onExport: (format: 'ndr' | 'dwg' | 'svg' | 'pdf' | 'png' | 'json') => void;
   onOpenJSON: () => void;
   onNewDocument: () => void;
   collaborators: CollaboratorUser[];
@@ -222,6 +234,13 @@ interface CorelTopPanelProps {
   onPowerClipEdit?: () => void;
   onPowerClipFinish?: () => void;
   isPowerClipEditing?: boolean;
+  symmetryEditingConfig?: SymmetryConfig | null;
+  onUpdateSymmetryConfig?: (cfg: Partial<SymmetryConfig>) => void;
+  onCreateSymmetry?: () => void;
+  onEditSymmetry?: () => void;
+  onFinishSymmetry?: () => void;
+  onRemoveSymmetry?: () => void;
+  onBreakSymmetryLink?: () => void;
   onAlign?: (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'center-page') => void;
   onConvertToCurves?: () => void;
   curveEditState?: CurveEditState;
@@ -247,10 +266,11 @@ interface CorelTopPanelProps {
   onSaveAsTemplate?: () => void;
   onRevert?: () => void;
   canSave?: boolean;
+  isDirty?: boolean;
   canRevert?: boolean;
   onAcquireImage?: (source: 'file' | 'clipboard') => void;
   onImport?: () => void;
-  onQuickExport?: (format: 'ndr' | 'svg' | 'pdf' | 'png' | 'json', scale?: number) => void;
+  onQuickExport?: (format: 'ndr' | 'dwg' | 'svg' | 'pdf' | 'png' | 'json', scale?: number) => void;
   onSendTo?: (target: 'desktop' | 'mail' | 'cloud') => void;
   onPrintMerge?: (action: 'insert_field' | 'csv') => void;
   onPrint?: () => void;
@@ -328,6 +348,8 @@ interface CorelTopPanelProps {
   onEffectAction?: (action: string, payload?: any) => void;
   // QR Code Generator
   onOpenQrCode?: () => void;
+  // Random Filler Macro
+  onOpenRandomFiller?: () => void;
   // Project Timer
   showProjectTimer?: boolean;
   onToggleProjectTimer?: () => void;
@@ -340,6 +362,7 @@ interface CorelTopPanelProps {
   cropToolsConfig?: CropToolsConfig;
   onUpdateCropToolsConfig?: (cfg: Partial<CropToolsConfig>) => void;
   onCropAction?: (action: CropActionType) => void;
+  onAutofitPage?: (marginPx?: number) => void;
   currentFill?: string;
   currentStroke?: string;
 }
@@ -381,6 +404,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onZoomOut,
   onZoomFit,
   onZoomSet,
+  onZoomMode,
   zoomLevel,
   showGrid,
   onToggleGrid,
@@ -428,6 +452,13 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onPowerClipEdit,
   onPowerClipFinish,
   isPowerClipEditing = false,
+  symmetryEditingConfig = null,
+  onUpdateSymmetryConfig,
+  onCreateSymmetry,
+  onEditSymmetry,
+  onFinishSymmetry,
+  onRemoveSymmetry,
+  onBreakSymmetryLink,
   onAlign,
   onConvertToCurves,
   curveEditState,
@@ -451,6 +482,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onSaveAsTemplate,
   onRevert,
   canSave = true,
+  isDirty = false,
   canRevert = false,
   onAcquireImage,
   onImport,
@@ -525,6 +557,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onTextAction,
   onEffectAction,
   onOpenQrCode,
+  onOpenRandomFiller,
   showProjectTimer = false,
   onToggleProjectTimer,
   projectTimerSeconds = 0,
@@ -534,6 +567,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   cropToolsConfig = { eraserSize: 18, eraserNib: 'round', knifeAutoGap: false, cropRegion: null },
   onUpdateCropToolsConfig,
   onCropAction,
+  onAutofitPage,
   currentFill = '#00a651',
   currentStroke = '#000000',
 }) => {
@@ -561,6 +595,33 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   const cropButtonRef = useRef<HTMLButtonElement | null>(null);
   const cropDropdownRef = useRef<HTMLDivElement | null>(null);
   const [cropMenuPos, setCropMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [autofitDropdownOpen, setAutofitDropdownOpen] = useState<boolean>(false);
+  const autofitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const autofitDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [autofitMenuPos, setAutofitMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [nudgeDraft, setNudgeDraft] = useState<string | null>(null);
+  const [autofitMarginDraft, setAutofitMarginDraft] = useState<string | null>(null);
+  const [nudgeTooltipOpen, setNudgeTooltipOpen] = useState<boolean>(false);
+  const nudgeControlRef = useRef<HTMLDivElement | null>(null);
+  const [nudgeTooltipPos, setNudgeTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  React.useEffect(() => {
+    if (!autofitDropdownOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (autofitDropdownRef.current?.contains(target) || autofitButtonRef.current?.contains(target)) return;
+      setAutofitDropdownOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAutofitDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [autofitDropdownOpen]);
 
   React.useEffect(() => {
     if (!cropDropdownOpen) return;
@@ -672,12 +733,88 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
     return unitToPx(val, pageConfig.units);
   };
 
+  const getFineStepForUnit = (unit: PageConfig['units']) => {
+    switch (unit) {
+      case 'mm':
+        return 0.1;
+      case 'cm':
+        return 0.05;
+      case 'in':
+        return 0.01;
+      case 'px':
+        return 1;
+      case 'pt':
+        return 0.5;
+      case 'pc':
+        return 0.1;
+      default:
+        return 0.01;
+    }
+  };
+
+  const formatFineUnit = (pxVal: number, unit: PageConfig['units'], minDecimals = 1) => {
+    const raw = pxToUnit(pxVal, unit, unit === 'px' ? 1 : 3);
+    let numStr: string;
+    if (unit === 'px') {
+      numStr = Number.isInteger(raw) ? String(raw) : raw.toFixed(1);
+    } else {
+      const trimmed = String(Number(raw.toFixed(3)));
+      const parts = trimmed.split('.');
+      if (!parts[1] && minDecimals > 0) {
+        numStr = `${trimmed}.${'0'.repeat(minDecimals)}`;
+      } else if (parts[1] && parts[1].length < minDecimals) {
+        numStr = `${parts[0]}.${parts[1].padEnd(minDecimals, '0')}`;
+      } else {
+        numStr = trimmed;
+      }
+    }
+    const sym = (UNITS_DATA[unit] || UNITS_DATA.px).symbol;
+    return `${numStr} ${sym}`;
+  };
+
+  const currentNudgePx = pageConfig.nudgeDistance ?? unitToPx(0.1, 'mm');
+  const currentAutofitMarginPx = pageConfig.autofitMargin ?? 0;
+
+  const commitNudgeValue = (rawInput: string) => {
+    const parsed = parseFloat(rawInput);
+    if (!isNaN(parsed) && parsed > 0) {
+      onUpdatePageConfig({ nudgeDistance: Math.max(0.01, fromDisplay(parsed)) });
+    }
+    setNudgeDraft(null);
+  };
+
+  const stepNudgeDistance = (direction: 1 | -1) => {
+    const step = getFineStepForUnit(pageConfig.units);
+    const currentInUnit = pxToUnit(currentNudgePx, pageConfig.units, 3);
+    const minVal = pageConfig.units === 'px' ? 0.5 : step;
+    const nextInUnit = Math.max(minVal, Number((currentInUnit + direction * step).toFixed(3)));
+    onUpdatePageConfig({ nudgeDistance: fromDisplay(nextInUnit) });
+    setNudgeDraft(null);
+  };
+
+  const commitAutofitMarginValue = (rawInput: string) => {
+    const parsed = parseFloat(rawInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      onUpdatePageConfig({ autofitMargin: Math.max(0, fromDisplay(parsed)) });
+    }
+    setAutofitMarginDraft(null);
+  };
+
+  const stepAutofitMargin = (direction: 1 | -1) => {
+    const step = getFineStepForUnit(pageConfig.units);
+    const currentInUnit = pxToUnit(currentAutofitMarginPx, pageConfig.units, 3);
+    const nextInUnit = Math.max(0, Number((currentInUnit + direction * step).toFixed(3)));
+    onUpdatePageConfig({ autofitMargin: fromDisplay(nextInUnit) });
+    setAutofitMarginDraft(null);
+  };
+
   const isSelected = !!selectedObject;
   const isDimensionTool = ['dimension', 'hv_dimension', 'angular_dimension', 'segment_dimension', 'callout'].includes(activeTool);
   const isEffectTool = ['shadow', 'contour', 'blend', 'distort', 'envelope', 'extrude', 'block_shadow'].includes(activeTool);
   const isFreehandCurveTool = ['freehand', 'line2p', 'bezier', 'pen', 'b_spline', 'polyline', 'curve_3p'].includes(activeTool);
   const isCropTool = ['crop', 'knife', 'virtual_segment_delete', 'eraser'].includes(activeTool);
   const isEyedropperTool = activeTool === 'eyedropper';
+  const isZoomTool = activeTool === 'zoom' || activeTool === 'pan';
   const isText = (selectedObject && (selectedObject.type === 'i-text' || selectedObject.type === 'text')) || (activeTool === 'text');
   const isRect = selectedObject && selectedObject.type === 'rect';
 
@@ -716,6 +853,33 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
       className={`border-b select-none transition-colors ${isDark ? 'bg-[#484b51] border-[#646870] text-zinc-100' : 'bg-[#ebecee] border-[#b5b8bd] text-zinc-900'}`}
       style={{ fontFamily: 'Segoe UI, Tahoma, sans-serif' }}
     >
+      {/* =========================================================================
+          ROW 0: Application Title Bar (Exact match with image_d50933df.png: Nuradraw - FileName*)
+          ========================================================================= */}
+      <div
+        className={`h-6 border-b px-2.5 flex items-center justify-between text-xs ${
+          isDark
+            ? 'bg-[#3b3e44] border-[#565a62] text-zinc-100'
+            : 'bg-white border-[#dcdee2] text-zinc-900'
+        }`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src="/assets/aistudio/favicon_23650500.svg"
+            alt="Nuradraw"
+            className="w-4 h-4 object-contain shrink-0"
+            draggable={false}
+          />
+          <span
+            title={`Nuradraw - ${documentName || activeDocTab || 'Untitled-1'}${isDirty ? '*' : ''}`}
+            className="text-[12px] font-normal tracking-normal truncate"
+          >
+            Nuradraw - {documentName || activeDocTab || 'Untitled-1'}
+            {isDirty ? '*' : ''}
+          </span>
+        </div>
+      </div>
+
       {/* =========================================================================
           ROW 1: CorelDRAW Classic Menu Bar
           ========================================================================= */}
@@ -1098,6 +1262,15 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                         >
                           HTML5 / Vector (SVG)...
                         </button>
+                        <button
+                          onClick={() => {
+                            (onQuickExport ? onQuickExport('dwg') : onExport('dwg'));
+                            setActiveMenu(null);
+                          }}
+                          className="w-full text-left px-3 py-1 hover:bg-[#0078d7] hover:text-white"
+                        >
+                          AutoCAD Drawing (.dwg)...
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1147,6 +1320,15 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                           className="w-full text-left px-3 py-1 hover:bg-[#0078d7] hover:text-white"
                         >
                           Quick Export PNG
+                        </button>
+                        <button
+                          onClick={() => {
+                            (onQuickExport ? onQuickExport('dwg') : onExport('dwg'));
+                            setActiveMenu(null);
+                          }}
+                          className="w-full text-left px-3 py-1 hover:bg-[#0078d7] hover:text-white"
+                        >
+                          Quick Export DWG
                         </button>
                       </div>
                     )}
@@ -2425,6 +2607,89 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                       </div>
                     </button>
                   )}
+
+                  <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
+
+                  {/* Symmetry Header & Options */}
+                  <div className="px-3 py-1 font-semibold text-[10px] uppercase text-sky-600 dark:text-sky-400 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700 mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <IconSymmetryCreate className="w-3.5 h-3.5" />
+                      Symmetry
+                    </span>
+                    <span className="text-[9px] bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 px-1 py-0.2 rounded font-semibold">Live Mirror</span>
+                  </div>
+
+                  {!symmetryEditingConfig ? (
+                    <button
+                      onClick={() => {
+                        onCreateSymmetry?.();
+                        setActiveMenu(null);
+                      }}
+                      disabled={!selectedObject || !!(selectedObject as any)?.isSymmetryGroup}
+                      className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center disabled:opacity-40"
+                    >
+                      <div className="flex items-center gap-2">
+                        <IconSymmetryCreate className="w-4 h-4 shrink-0" />
+                        <span className="font-medium">Create New Symmetry</span>
+                      </div>
+                      <span className="font-mono text-[10px] opacity-70">Alt+S</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        onFinishSymmetry?.();
+                        setActiveMenu(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 bg-sky-50 dark:bg-sky-900/30 hover:bg-[#0078d7] hover:text-white text-sky-700 dark:text-sky-300 flex justify-between items-center font-semibold"
+                    >
+                      <div className="flex items-center gap-2">
+                        <IconSymmetryFinish className="w-4 h-4 shrink-0" />
+                        <span>Finish Editing Symmetry</span>
+                      </div>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      onEditSymmetry?.();
+                      setActiveMenu(null);
+                    }}
+                    disabled={!!symmetryEditingConfig || !selectedObject || !(selectedObject as any)?.isSymmetryGroup}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center disabled:opacity-40"
+                  >
+                    <div className="flex items-center gap-2">
+                      <IconSymmetryEdit className="w-4 h-4 shrink-0" />
+                      <span>Edit Symmetry</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onBreakSymmetryLink?.();
+                      setActiveMenu(null);
+                    }}
+                    disabled={!symmetryEditingConfig && (!selectedObject || !(selectedObject as any)?.isSymmetryGroup)}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center disabled:opacity-40"
+                  >
+                    <div className="flex items-center gap-2">
+                      <IconSymmetryBreak className="w-4 h-4 shrink-0" />
+                      <span>Break Symmetry Link</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onRemoveSymmetry?.();
+                      setActiveMenu(null);
+                    }}
+                    disabled={!symmetryEditingConfig && (!selectedObject || !(selectedObject as any)?.isSymmetryGroup)}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center disabled:opacity-40"
+                  >
+                    <div className="flex items-center gap-2">
+                      <IconSymmetryRemove className="w-4 h-4 shrink-0" />
+                      <span>Remove Symmetry</span>
+                    </div>
+                  </button>
 
                   <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
 
@@ -3878,6 +4143,21 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                     </span>
                   </button>
 
+                  {/* Autofit Page */}
+                  <button
+                    onMouseEnter={() => setActiveLayoutSubmenu(null)}
+                    onClick={() => {
+                      onAutofitPage?.(currentAutofitMarginPx);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full text-left px-2.5 py-1 hover:bg-[#c9ced4] dark:hover:bg-zinc-700 flex items-center justify-between"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <IconAutofitPage className="w-4 h-4 shrink-0" />
+                      <span>Autofit Page</span>
+                    </span>
+                  </button>
+
                   {/* 11. Page Layout... */}
                   <button
                     onMouseEnter={() => setActiveLayoutSubmenu(null)}
@@ -3957,6 +4237,15 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <QrCode className="w-3.5 h-3.5 text-sky-500" />
                       <span>QR Code Generator...</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => onOpenRandomFiller?.()}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                      <span>Random Filler...</span>
                     </div>
                   </button>
                   <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
@@ -4575,27 +4864,43 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
         {/* Divider */}
         <div className="h-5 w-px bg-[#c2c5cb] mx-0.5" />
 
-        {/* Zoom Level Dropdown (Supports up to CorelDRAW Max 409,600%) */}
+        {/* Zoom Level Dropdown (Includes To Page, To Width, To Height, To Fit & up to 409,600%) */}
         <div className="flex items-center bg-white border border-[#abadb3] rounded-xs px-1.5 py-0.5 h-6">
           <select
-            value={Math.round(zoomLevel * 100)}
-            onChange={(e) => onZoomSet(Math.min(4096, Math.max(0.01, Number(e.target.value) / 100)))}
+            value={Math.max(1, Math.round(zoomLevel * 100))}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'to_page' || val === 'to_width' || val === 'to_height' || val === 'to_fit') {
+                onZoomMode?.(val);
+              } else {
+                onZoomSet(Math.min(4096, Math.max(0.01, Number(val) / 100)));
+              }
+            }}
+            title="Zoom Levels (To Page, To Width, To Height, To Fit, or %)"
             className="text-xs text-zinc-900 bg-transparent outline-none cursor-pointer pr-1 font-sans"
           >
-            {(() => {
-              const curPct = Math.max(1, Math.round(zoomLevel * 100));
-              const presets = [
-                1, 5, 10, 25, 50, 75, 100, 150, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 50000, 100000, 200000, 409600,
-              ];
-              const list = presets.includes(curPct)
-                ? presets
-                : [...presets, curPct].sort((a, b) => a - b);
-              return list.map((pct) => (
-                <option key={pct} value={pct}>
-                  {pct.toLocaleString()}%
-                </option>
-              ));
-            })()}
+            <optgroup label="Fit Options">
+              <option value="to_page">To Page (Shift+F4)</option>
+              <option value="to_width">To Width</option>
+              <option value="to_height">To Height</option>
+              <option value="to_fit">To Fit (F4)</option>
+            </optgroup>
+            <optgroup label="Zoom Levels">
+              {(() => {
+                const curPct = Math.max(1, Math.round(zoomLevel * 100));
+                const presets = [
+                  1, 5, 10, 25, 50, 75, 100, 150, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 50000, 100000, 200000, 409600,
+                ];
+                const list = presets.includes(curPct)
+                  ? presets
+                  : [...presets, curPct].sort((a, b) => a - b);
+                return list.map((pct) => (
+                  <option key={pct} value={pct}>
+                    {pct.toLocaleString()}%
+                  </option>
+                ));
+              })()}
+            </optgroup>
           </select>
         </div>
 
@@ -5788,6 +6093,112 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
               Click any canvas object to sample its Fill & Stroke • Hold Shift to sample multiple
             </span>
           </div>
+        ) : isZoomTool ? (
+          /* Zoom / Pan Tool Property Bar with Zoom Levels Dropdown & To Page */
+          <div className="flex items-center gap-2 w-full shrink-0">
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <ZoomIn className="w-4 h-4 text-[#0078d7]" />
+              <span className="font-semibold text-[11px]">
+                {activeTool === 'pan' ? 'Pan Tool (H)' : 'Zoom Tool (F2)'}
+              </span>
+            </div>
+
+            <div className="flex items-center bg-white border border-[#abadb3] rounded-xs px-1.5 py-0.5 h-6 shrink-0">
+              <select
+                value={Math.max(1, Math.round(zoomLevel * 100))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'to_page' || val === 'to_width' || val === 'to_height' || val === 'to_fit') {
+                    onZoomMode?.(val);
+                  } else {
+                    onZoomSet(Math.min(4096, Math.max(0.01, Number(val) / 100)));
+                  }
+                }}
+                className="text-xs text-zinc-900 bg-transparent outline-none cursor-pointer pr-1 font-sans"
+              >
+                <optgroup label="Fit Options">
+                  <option value="to_page">To Page (Shift+F4)</option>
+                  <option value="to_width">To Width</option>
+                  <option value="to_height">To Height</option>
+                  <option value="to_fit">To Fit (F4)</option>
+                </optgroup>
+                <optgroup label="Zoom Levels">
+                  {(() => {
+                    const curPct = Math.max(1, Math.round(zoomLevel * 100));
+                    const presets = [10, 25, 50, 75, 100, 150, 200, 400, 800, 1600, 3200];
+                    const list = presets.includes(curPct)
+                      ? presets
+                      : [...presets, curPct].sort((a, b) => a - b);
+                    return list.map((pct) => (
+                      <option key={pct} value={pct}>
+                        {pct.toLocaleString()}%
+                      </option>
+                    ));
+                  })()}
+                </optgroup>
+              </select>
+            </div>
+
+            <button
+              onClick={onZoomIn}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium flex items-center gap-1 cursor-pointer shrink-0"
+              title="Zoom In (Ctrl++)"
+            >
+              <ZoomIn className="w-3.5 h-3.5 text-[#0078d7]" />
+              <span>Zoom In</span>
+            </button>
+
+            <button
+              onClick={onZoomOut}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium flex items-center gap-1 cursor-pointer shrink-0"
+              title="Zoom Out (Ctrl+-)"
+            >
+              <ZoomOut className="w-3.5 h-3.5 text-[#0078d7]" />
+              <span>Zoom Out</span>
+            </button>
+
+            <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />
+
+            <button
+              onClick={() => onZoomSet(1)}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shrink-0"
+              title="Zoom to Actual Size (100%)"
+            >
+              1:1 (100%)
+            </button>
+
+            <button
+              onClick={() => onZoomMode?.('to_page')}
+              className="h-6 px-2.5 bg-[#e5f1fb] border border-[#0078d7] hover:bg-[#cce8ff] rounded-xs text-[11px] text-zinc-900 font-semibold cursor-pointer shrink-0"
+              title="Zoom To Page (Shift+F4)"
+            >
+              To Page
+            </button>
+
+            <button
+              onClick={() => onZoomMode?.('to_width')}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shrink-0"
+              title="Zoom To Page Width"
+            >
+              To Width
+            </button>
+
+            <button
+              onClick={() => onZoomMode?.('to_height')}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shrink-0"
+              title="Zoom To Page Height"
+            >
+              To Height
+            </button>
+
+            <button
+              onClick={() => onZoomMode?.('to_fit')}
+              className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shrink-0"
+              title="Zoom To Fit All Objects (F4)"
+            >
+              To Fit
+            </button>
+          </div>
         ) : isText ? (
           /* When Text is Selected or Text Tool Active: Full Typography & Font Styling Property Bar */
           <div className="flex items-center gap-2 w-full shrink-0">
@@ -6516,6 +6927,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 <>
                   {!(selectedObject as any)?.isPowerClip &&
                     (selectedObject as any)?.customType !== 'powerclip' &&
+                    !(selectedObject as any)?.isSymmetryGroup &&
                     !(selectedObject as any)?.isTextOnPath &&
                     (selectedObject as any)?.customType !== 'qrcode' &&
                     onEnterGroupEdit && (
@@ -6527,14 +6939,16 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                         <span>✎ Edit Group</span>
                       </button>
                     )}
-                  <button
-                    onClick={onUngroup}
-                    title="Ungroup Objects (Ctrl+U)"
-                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] hover:border-[#0078d7] flex items-center gap-1 text-xs text-zinc-900 font-medium transition cursor-pointer"
-                  >
-                    <span>Ungroup</span>
-                  </button>
-                  {onUngroupAll && (
+                  {!(selectedObject as any)?.isSymmetryGroup && (
+                    <button
+                      onClick={onUngroup}
+                      title="Ungroup Objects (Ctrl+U)"
+                      className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] hover:border-[#0078d7] flex items-center gap-1 text-xs text-zinc-900 font-medium transition cursor-pointer"
+                    >
+                      <span>Ungroup</span>
+                    </button>
+                  )}
+                  {!(selectedObject as any)?.isSymmetryGroup && onUngroupAll && (
                     <button
                       onClick={onUngroupAll}
                       title="Ungroup All Nested Groups"
@@ -6546,6 +6960,48 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 </>
               )}
 
+              {/* Selected Symmetry Group Quick Actions */}
+              {selectedObject && (selectedObject as any)?.isSymmetryGroup && !symmetryEditingConfig && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={onEditSymmetry}
+                    title="Edit Symmetry (Double-click)"
+                    className="px-2 py-0.5 rounded-xs border border-[#0078d7] bg-[#e5f1fb] hover:bg-[#cce8ff] flex items-center gap-1 text-xs text-zinc-900 font-semibold transition cursor-pointer"
+                  >
+                    <IconSymmetryEdit className="w-3.5 h-3.5" />
+                    <span>Edit Symmetry</span>
+                  </button>
+                  <button
+                    onClick={onBreakSymmetryLink}
+                    title="Break Symmetry Link into independent objects"
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] hover:border-[#0078d7] flex items-center gap-1 text-xs text-zinc-900 font-medium transition cursor-pointer"
+                  >
+                    <IconSymmetryBreak className="w-3.5 h-3.5" />
+                    <span>Break Link</span>
+                  </button>
+                  <button
+                    onClick={onRemoveSymmetry}
+                    title="Remove Symmetry copies"
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-red-50 hover:border-red-400 flex items-center gap-1 text-xs text-zinc-900 font-medium transition cursor-pointer"
+                  >
+                    <IconSymmetryRemove className="w-3.5 h-3.5" />
+                    <span>Remove Symmetry</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Create New Symmetry Quick Button for Selected Object(s) */}
+              {selectedObject && !(selectedObject as any)?.isSymmetryGroup && !symmetryEditingConfig && onCreateSymmetry && (
+                <button
+                  onClick={onCreateSymmetry}
+                  title="Create New Symmetry (Alt+S)"
+                  className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] hover:border-[#0078d7] flex items-center gap-1 text-xs text-zinc-900 font-medium transition cursor-pointer shrink-0"
+                >
+                  <IconSymmetryCreate className="w-3.5 h-3.5 shrink-0" />
+                  <span>Symmetry</span>
+                </button>
+              )}
+
               {selectedObject?.type === 'image' && onBitmapCmykSeparation && (
                 <button
                   onClick={onBitmapCmykSeparation}
@@ -6555,6 +7011,71 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                   <IconCmykSeparation className="w-3.5 h-3.5 shrink-0" />
                   <span>CMYK Separation</span>
                 </button>
+              )}
+
+              {symmetryEditingConfig && (
+                <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-[#c2c5cb]">
+                  <span className="text-[11px] font-medium text-zinc-600">Mirrors:</span>
+                  <div className="flex items-center border border-[#abadb3] bg-white rounded-xs overflow-hidden">
+                    <button
+                      onClick={() =>
+                        onUpdateSymmetryConfig?.({
+                          mirrorLines: Math.max(1, (symmetryEditingConfig.mirrorLines || 1) - 1),
+                        })
+                      }
+                      className="px-1.5 py-0.5 text-xs hover:bg-[#e5f1fb] border-r border-[#d0d3d8] cursor-pointer"
+                      title="Decrease Mirror Lines"
+                    >
+                      −
+                    </button>
+                    <span className="px-2 text-xs font-mono font-semibold text-zinc-900">
+                      {symmetryEditingConfig.mirrorLines || 1}
+                    </span>
+                    <button
+                      onClick={() =>
+                        onUpdateSymmetryConfig?.({
+                          mirrorLines: Math.min(12, (symmetryEditingConfig.mirrorLines || 1) + 1),
+                        })
+                      }
+                      className="px-1.5 py-0.5 text-xs hover:bg-[#e5f1fb] border-l border-[#d0d3d8] cursor-pointer"
+                      title="Increase Mirror Lines"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    onClick={() =>
+                      onUpdateSymmetryConfig?.({
+                        angleDeg: Math.abs((symmetryEditingConfig.angleDeg || 0) % 180) < 45 ? 90 : 0,
+                      })
+                    }
+                    title="Switch Vertical / Horizontal Mirror Axis"
+                    className="px-1.5 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] text-[11px] text-zinc-800 cursor-pointer"
+                  >
+                    {Math.round(symmetryEditingConfig.angleDeg || 0)}°
+                  </button>
+                  <button
+                    onClick={onFinishSymmetry}
+                    title="Finish Editing Symmetry"
+                    className="px-2 py-0.5 rounded-xs border border-sky-600 bg-[#0078d7] text-white hover:bg-[#0063b1] flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <span>✓ Finish Symmetry</span>
+                  </button>
+                  <button
+                    onClick={onBreakSymmetryLink}
+                    title="Break Symmetry Link"
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] text-xs text-zinc-900 cursor-pointer"
+                  >
+                    Break Link
+                  </button>
+                  <button
+                    onClick={onRemoveSymmetry}
+                    title="Remove Symmetry"
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-red-50 hover:border-red-400 text-xs text-zinc-900 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
               )}
 
               {groupEditDepth > 0 && onExitGroupEdit && (
@@ -6569,8 +7090,72 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
             </div>
           </div>
         ) : (
-          /* When NO Object is Selected: CorelDRAW Contextual Page Setup Bar */
+          /* When NO Object is Selected: CorelDRAW Contextual Page Setup Bar (or Symmetry Editing Bar) */
           <div className="flex items-center gap-2.5 w-full overflow-x-auto py-0.5">
+            {symmetryEditingConfig && (
+              <>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <IconSymmetryEdit className="w-4 h-4 shrink-0" />
+                  <span className="text-xs font-bold text-[#0078d7]">Symmetry Editing:</span>
+                  <span className="text-xs text-zinc-600">Mirror lines:</span>
+                  <div className="flex items-center border border-[#abadb3] bg-white rounded-xs overflow-hidden">
+                    <button
+                      onClick={() =>
+                        onUpdateSymmetryConfig?.({
+                          mirrorLines: Math.max(1, (symmetryEditingConfig.mirrorLines || 1) - 1),
+                        })
+                      }
+                      className="px-1.5 py-0.5 text-xs hover:bg-[#e5f1fb] border-r border-[#d0d3d8] cursor-pointer"
+                    >
+                      −
+                    </button>
+                    <span className="px-2 text-xs font-mono font-semibold text-zinc-900">
+                      {symmetryEditingConfig.mirrorLines || 1}
+                    </span>
+                    <button
+                      onClick={() =>
+                        onUpdateSymmetryConfig?.({
+                          mirrorLines: Math.min(12, (symmetryEditingConfig.mirrorLines || 1) + 1),
+                        })
+                      }
+                      className="px-1.5 py-0.5 text-xs hover:bg-[#e5f1fb] border-l border-[#d0d3d8] cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    onClick={() =>
+                      onUpdateSymmetryConfig?.({
+                        angleDeg: Math.abs((symmetryEditingConfig.angleDeg || 0) % 180) < 45 ? 90 : 0,
+                      })
+                    }
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] text-xs text-zinc-800 cursor-pointer"
+                    title="Toggle Vertical (0°) / Horizontal (90°) Mirror Axis"
+                  >
+                    Axis: {Math.round(symmetryEditingConfig.angleDeg || 0)}°
+                  </button>
+                  <button
+                    onClick={onFinishSymmetry}
+                    className="px-2.5 py-0.5 rounded-xs border border-sky-600 bg-[#0078d7] text-white hover:bg-[#0063b1] flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                  >
+                    <span>✓ Finish Editing Symmetry</span>
+                  </button>
+                  <button
+                    onClick={onBreakSymmetryLink}
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-[#e5f1fb] text-xs text-zinc-900 cursor-pointer"
+                  >
+                    Break Symmetry Link
+                  </button>
+                  <button
+                    onClick={onRemoveSymmetry}
+                    className="px-2 py-0.5 rounded-xs border border-[#abadb3] bg-white hover:bg-red-50 hover:border-red-400 text-xs text-zinc-900 cursor-pointer"
+                  >
+                    Remove Symmetry
+                  </button>
+                </div>
+                <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />
+              </>
+            )}
             {groupEditDepth > 0 && onExitGroupEdit && (
               <>
                 <button
@@ -6735,6 +7320,113 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
 
             <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />
 
+            {/* Autofit Page Margin Flyout Button (Exact from image_387e6bbe.png) */}
+            <div className="relative shrink-0">
+              <button
+                ref={autofitButtonRef}
+                onClick={() => {
+                  if (!autofitDropdownOpen && autofitButtonRef.current) {
+                    const rect = autofitButtonRef.current.getBoundingClientRect();
+                    setAutofitMenuPos({
+                      top: rect.bottom + 2,
+                      left: Math.max(8, Math.min(rect.left, window.innerWidth - 210)),
+                    });
+                  }
+                  setAutofitDropdownOpen((prev) => !prev);
+                }}
+                title="Autofit Page Margin"
+                className={`relative w-7 h-6 flex items-center justify-center rounded-xs border transition ${
+                  autofitDropdownOpen
+                    ? 'bg-[#cce8ff] border-[#0078d7] shadow-2xs'
+                    : 'border-transparent hover:bg-[#e5f1fb] hover:border-[#99d1ff]'
+                }`}
+              >
+                <IconAutofitPage className="w-4 h-4" />
+                <span
+                  className="absolute bottom-0.5 right-0.5 w-0 h-0 border-l-[4px] border-l-transparent border-b-[4px] border-b-zinc-700"
+                  aria-hidden="true"
+                />
+              </button>
+
+              {autofitDropdownOpen && (
+                <div
+                  ref={autofitDropdownRef}
+                  style={{ top: autofitMenuPos.top, left: autofitMenuPos.left }}
+                  className="fixed z-[999] w-[196px] bg-[#f0f0f0] border border-[#9a9ea4] shadow-lg p-2.5 select-none text-zinc-900"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-xs text-zinc-900">Margin:</span>
+                    <div className="flex items-stretch h-6 bg-white border border-[#abadb3] focus-within:border-[#0078d7]">
+                      <input
+                        type="text"
+                        value={autofitMarginDraft !== null ? autofitMarginDraft : formatFineUnit(currentAutofitMarginPx, pageConfig.units, 1)}
+                        onFocus={(e) => {
+                          setAutofitMarginDraft(formatFineUnit(currentAutofitMarginPx, pageConfig.units, 1));
+                          setTimeout(() => e.target.select(), 0);
+                        }}
+                        onChange={(e) => setAutofitMarginDraft(e.target.value)}
+                        onBlur={(e) => commitAutofitMarginValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            commitAutofitMarginValue((e.target as HTMLInputElement).value);
+                            (e.target as HTMLInputElement).blur();
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            stepAutofitMargin(1);
+                          } else if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            stepAutofitMargin(-1);
+                          } else if (e.key === 'Escape') {
+                            setAutofitMarginDraft(null);
+                            setAutofitDropdownOpen(false);
+                          }
+                        }}
+                        className="w-20 px-1.5 text-left text-xs font-sans text-zinc-900 outline-none bg-transparent"
+                      />
+                      <div className="flex flex-col w-4 border-l border-[#c2c5cb] bg-[#ececef]">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => stepAutofitMargin(1)}
+                          className="flex-1 flex items-center justify-center hover:bg-[#cce8ff] active:bg-[#99d1ff] border-b border-[#d0d3d8]"
+                          title="Increase Margin"
+                        >
+                          <svg viewBox="0 0 8 5" className="w-2 h-1.5" fill="#444"><path d="M4 0.5 L7.5 4.5 L0.5 4.5 Z" /></svg>
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => stepAutofitMargin(-1)}
+                          className="flex-1 flex items-center justify-center hover:bg-[#cce8ff] active:bg-[#99d1ff]"
+                          title="Decrease Margin"
+                        >
+                          <svg viewBox="0 0 8 5" className="w-2 h-1.5" fill="#444"><path d="M4 4.5 L7.5 0.5 L0.5 0.5 Z" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const activeMargin = autofitMarginDraft !== null && !isNaN(parseFloat(autofitMarginDraft))
+                        ? Math.max(0, fromDisplay(parseFloat(autofitMarginDraft)))
+                        : currentAutofitMarginPx;
+                      if (autofitMarginDraft !== null) {
+                        commitAutofitMarginValue(autofitMarginDraft);
+                      }
+                      onAutofitPage?.(activeMargin);
+                      setAutofitDropdownOpen(false);
+                    }}
+                    className="w-full h-6 bg-[#e1e1e1] hover:bg-[#e5f1fb] active:bg-[#cce8ff] border border-[#adadad] hover:border-[#0078d7] text-xs text-zinc-900 flex items-center justify-center transition cursor-pointer"
+                  >
+                    Autofit Page
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />
+
             {/* All 9 Measurement Units dropdown */}
             <div className="flex items-center gap-1 text-zinc-600 shrink-0">
               <span className="font-medium text-xs">Units:</span>
@@ -6753,14 +7445,83 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
 
             <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />
 
-            {/* Nudge Distance (Exact from image_2b0a935b.png: 2.54 mm) */}
-            <div className="flex items-center gap-1 text-zinc-600 shrink-0" title="Nudge Distance">
-              <span className="text-zinc-600 font-bold text-xs">☩</span>
-              <input
-                type="text"
-                defaultValue="2.54 mm"
-                className="w-18 h-5 bg-white border border-[#abadb3] px-1 text-right text-xs font-mono text-zinc-900 outline-none"
-              />
+            {/* Nudge Distance (Exact from image_205e352e.png: Icon + Input + Spinners + Tooltip) */}
+            <div
+              ref={nudgeControlRef}
+              onMouseEnter={() => {
+                if (nudgeControlRef.current) {
+                  const rect = nudgeControlRef.current.getBoundingClientRect();
+                  setNudgeTooltipPos({
+                    top: rect.bottom + 4,
+                    left: Math.max(8, Math.min(rect.left + 18, window.innerWidth - 230)),
+                  });
+                }
+                setNudgeTooltipOpen(true);
+              }}
+              onMouseLeave={() => setNudgeTooltipOpen(false)}
+              className="relative flex items-center gap-1 text-zinc-700 shrink-0"
+            >
+              <IconNudgeDistance className="w-4 h-4 shrink-0" />
+              <div className="flex items-stretch h-6 bg-white border border-[#abadb3] focus-within:border-[#0078d7]">
+                <input
+                  type="text"
+                  aria-label="Nudge distance"
+                  value={nudgeDraft !== null ? nudgeDraft : formatFineUnit(currentNudgePx, pageConfig.units, 1)}
+                  onFocus={(e) => {
+                    setNudgeTooltipOpen(false);
+                    setNudgeDraft(formatFineUnit(currentNudgePx, pageConfig.units, 1));
+                    setTimeout(() => e.target.select(), 0);
+                  }}
+                  onChange={(e) => setNudgeDraft(e.target.value)}
+                  onBlur={(e) => commitNudgeValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitNudgeValue((e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).blur();
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      stepNudgeDistance(1);
+                    } else if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      stepNudgeDistance(-1);
+                    } else if (e.key === 'Escape') {
+                      setNudgeDraft(null);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="w-16 px-1.5 text-left text-xs font-sans text-zinc-900 outline-none bg-transparent"
+                />
+                <div className="flex flex-col w-4 border-l border-[#c2c5cb] bg-[#ececef]">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => stepNudgeDistance(1)}
+                    className="flex-1 flex items-center justify-center hover:bg-[#cce8ff] active:bg-[#99d1ff] border-b border-[#d0d3d8]"
+                    title="Increase Nudge Distance"
+                  >
+                    <svg viewBox="0 0 8 5" className="w-2 h-1.5" fill="#444"><path d="M4 0.5 L7.5 4.5 L0.5 4.5 Z" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => stepNudgeDistance(-1)}
+                    className="flex-1 flex items-center justify-center hover:bg-[#cce8ff] active:bg-[#99d1ff]"
+                    title="Decrease Nudge Distance"
+                  >
+                    <svg viewBox="0 0 8 5" className="w-2 h-1.5" fill="#444"><path d="M4 4.5 L7.5 0.5 L0.5 0.5 Z" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              {nudgeTooltipOpen && (
+                <div
+                  style={{ top: nudgeTooltipPos.top, left: nudgeTooltipPos.left }}
+                  className="fixed z-[998] bg-white border border-zinc-500 shadow-md px-2.5 py-1.5 pointer-events-none text-left"
+                >
+                  <div className="text-[11px] font-bold text-zinc-900 leading-tight">Nudge distance</div>
+                  <div className="text-[11px] text-zinc-700 leading-tight mt-0.5">Set the distance for nudging objects.</div>
+                </div>
+              )}
             </div>
 
             <div className="h-5 w-px bg-[#c2c5cb] shrink-0" />

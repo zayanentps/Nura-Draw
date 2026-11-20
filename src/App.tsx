@@ -14,6 +14,8 @@ import {
   DimensionConfig,
   CropToolsConfig,
   CropActionType,
+  ZoomPresetMode,
+  SymmetryConfig,
 } from './types';
 import { socketService } from './services/socketService';
 import { CorelTopPanel } from './components/CorelTopPanel';
@@ -27,16 +29,23 @@ import { DockersSidebar, DockerId } from './components/dockers/DockersSidebar';
 import { ExportModal } from './components/ExportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PageSetupModal } from './components/PageSetupModal';
-import { importFromJSON, exportAsSVG, exportAsPNG, exportAsPDF, exportAsNDR } from './utils/exportUtils';
+import { importFromJSON, exportAsSVG, exportAsPNG, exportAsPDF, exportAsNDR, exportAsDWG } from './utils/exportUtils';
+import { pxToUnit, UNITS_DATA } from './utils/units';
 import { separateObjectToCmykPlates } from './utils/cmykSeparation';
 import { ensureObjectId, getObjectLabel, alignObjects, AlignMode, AlignTarget } from './utils/canvasHelpers';
 import { convertObjectToCurves } from './utils/curveEngine';
+import {
+  getSymmetryTransforms,
+  cloneAndTransformSymmetryObject,
+  transformSymmetryConfigByGroup,
+} from './utils/symmetryEngine';
 import { formatCmykComponents, normalizeHex, resolveColorName } from './utils/colorConversion';
-import { IconFitTextToPath, IconPowerClip } from './components/CorelTopPanelIcons';
+import { IconFitTextToPath, IconPowerClip, IconSymmetryCreate } from './components/CorelTopPanelIcons';
 import { TextToolsModals, TextDialogKind } from './components/TextToolsModals';
 import { FitTextToPathModal } from './components/FitTextToPathModal';
 import { EffectToolsModal, EffectDialogState } from './components/EffectToolsModal';
 import { QrCodeModal } from './components/QrCodeModal';
+import { RandomFillerModal } from './components/RandomFillerModal';
 import { FountainFillModal } from './components/FountainFillModal';
 import {
   ProjectTimerWindow,
@@ -72,6 +81,8 @@ export default function App() {
       showBleed: false,
       showPageBorder: true,
       dpi: 96,
+      nudgeDistance: (96 / 25.4) * 0.1, // 0.1 mm default
+      autofitMargin: 0, // 0.0 mm default
     },
   ]);
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
@@ -247,8 +258,9 @@ export default function App() {
 
   // Export Modal
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
-  const [exportDefaultFormat, setExportDefaultFormat] = useState<'ndr' | 'svg' | 'pdf' | 'png' | 'json'>('ndr');
+  const [exportDefaultFormat, setExportDefaultFormat] = useState<'ndr' | 'dwg' | 'svg' | 'pdf' | 'png' | 'json'>('ndr');
   const [exportDialogMode, setExportDialogMode] = useState<'save' | 'export'>('save');
+  const [showRandomFillerModal, setShowRandomFillerModal] = useState<boolean>(false);
 
   // Text Menu State & Dialogs
   const [activeTextDialog, setActiveTextDialog] = useState<TextDialogKind>(null);
@@ -291,6 +303,11 @@ export default function App() {
   });
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const [isDirty, setIsDirty] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fileName = documentName || activeDocTab || 'Untitled-1';
+    document.title = `Nuradraw - ${fileName}${isDirty ? '*' : ''}`;
+  }, [documentName, activeDocTab, isDirty]);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const csvMergeInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -427,6 +444,13 @@ export default function App() {
   const [fitTextGroupTarget, setFitTextGroupTarget] = useState<fabric.Group | null>(null);
   const [showQrCodeModal, setShowQrCodeModal] = useState<boolean>(false);
   const [showFountainFillModal, setShowFountainFillModal] = useState<boolean>(false);
+
+  // Live Symmetry Editing state
+  const [symmetryEditingConfig, setSymmetryEditingConfig] = useState<SymmetryConfig | null>(null);
+  const symmetryEditingConfigRef = useRef<SymmetryConfig | null>(null);
+  symmetryEditingConfigRef.current = symmetryEditingConfig;
+  const isSyncingSymmetryRef = useRef<boolean>(false);
+  const symmetrySyncSeqRef = useRef<number>(0);
 
   // Nested Group Editing (Isolation Mode) stack
   interface GroupEditLevel {
@@ -599,6 +623,23 @@ export default function App() {
     cropActionHandlerRef.current?.(action);
   }, []);
 
+  const zoomModeHandlerRef = useRef<((mode: ZoomPresetMode) => void) | null>(null);
+  const handleRegisterZoomModeHandler = useCallback((handler: (mode: ZoomPresetMode) => void) => {
+    zoomModeHandlerRef.current = handler;
+  }, []);
+  const handleZoomMode = useCallback(
+    (mode: ZoomPresetMode) => {
+      if (zoomModeHandlerRef.current) {
+        zoomModeHandlerRef.current(mode);
+      } else if (mode === 'to_fit') {
+        handleZoomToFitObjects();
+      } else {
+        setZoomLevel(0.85);
+      }
+    },
+    []
+  );
+
   // Initialize socket and listeners
   useEffect(() => {
     socketService.connect(roomId);
@@ -666,6 +707,13 @@ export default function App() {
     'isDimension',
     'dimensionKind',
     'perPixelTargetFind',
+    'globalCompositeOperation',
+    'isSymmetryGroup',
+    'symmetryConfig',
+    'symmetryLocalAxis',
+    'isSymmetryPrimary',
+    'isSymmetryMirror',
+    'symmetryCopyIndex',
   ];
 
   // Push history state helper
@@ -1154,6 +1202,7 @@ export default function App() {
         return;
       }
       if (
+        (target as any).isSymmetryGroup ||
         (target as any).isPowerClip ||
         (target as any).customType === 'powerclip' ||
         (target as any).isTextOnPath ||
@@ -1378,24 +1427,499 @@ export default function App() {
     [canvas, pageConfig.width, pageConfig.height, pushHistory]
   );
 
+  const syncSymmetryMirrors = useCallback(
+    async (cfgOverride?: SymmetryConfig) => {
+      if (!canvas) return;
+      const cfg = cfgOverride || symmetryEditingConfigRef.current;
+      if (!cfg) return;
+
+      const seq = ++symmetrySyncSeqRef.current;
+      const primaries = canvas
+        .getObjects()
+        .filter((o) => (o as any).isSymmetryPrimary && !(o as any).isSymmetryMirror);
+      const transforms = getSymmetryTransforms(cfg);
+
+      const cloneJobs: Promise<fabric.FabricObject>[] = [];
+      for (const p of primaries) {
+        for (let idx = 0; idx < transforms.length; idx++) {
+          cloneJobs.push(cloneAndTransformSymmetryObject(p, transforms[idx], idx));
+        }
+      }
+
+      const newMirrors = await Promise.all(cloneJobs);
+      if (seq !== symmetrySyncSeqRef.current || !symmetryEditingConfigRef.current) {
+        return;
+      }
+
+      isSyncingSymmetryRef.current = true;
+      try {
+        const oldMirrors = canvas.getObjects().filter((o) => (o as any).isSymmetryMirror);
+        oldMirrors.forEach((m) => canvas.remove(m));
+
+        if (newMirrors.length > 0) {
+          const allObjs = canvas.getObjects();
+          const firstPrimaryIdx = allObjs.findIndex((o) => (o as any).isSymmetryPrimary);
+          const insertIdx = firstPrimaryIdx >= 0 ? firstPrimaryIdx : allObjs.length;
+          canvas.insertAt(insertIdx, ...newMirrors);
+        }
+        canvas.requestRenderAll();
+      } finally {
+        isSyncingSymmetryRef.current = false;
+      }
+    },
+    [canvas]
+  );
+
+  const handleEditSymmetry = useCallback(
+    async (targetArg?: any) => {
+      if (!canvas) return;
+      if (symmetryEditingConfigRef.current) {
+        showToast('Already editing Symmetry');
+        return;
+      }
+      const target = targetArg || selectedObject || canvas.getActiveObject();
+      if (!target || !(target as any).isSymmetryGroup || target.type !== 'group') {
+        showToast('Select a Symmetry group to edit');
+        return;
+      }
+
+      try {
+        const group = target as fabric.Group;
+        const insertIndex = Math.max(0, canvas.getObjects().indexOf(group));
+        const storedCfg: SymmetryConfig = (group as any).symmetryConfig || {
+          centerX: group.getCenterPoint().x,
+          centerY: group.getCenterPoint().y,
+          angleDeg: 0,
+          mirrorLines: 1,
+        };
+        const localAxis = (group as any).symmetryLocalAxis as { x: number; y: number } | undefined;
+        const groupMatrix = group.calcTransformMatrix();
+        const sceneCenterPt = localAxis
+          ? new fabric.Point(localAxis.x, localAxis.y).transform(groupMatrix)
+          : group.getCenterPoint();
+        const transformedCfg = transformSymmetryConfigByGroup(storedCfg, group);
+        const nextCfg: SymmetryConfig = {
+          centerX: sceneCenterPt.x,
+          centerY: sceneCenterPt.y,
+          angleDeg: transformedCfg.angleDeg,
+          mirrorLines: Math.max(1, Math.min(12, Math.round(storedCfg.mirrorLines || 1))),
+        };
+
+        const children = group.removeAll();
+        let primaries = children.filter((c) => !(c as any).isSymmetryMirror);
+        if (primaries.length === 0 && children.length > 0) {
+          primaries = [children[0]];
+        }
+
+        isSyncingSymmetryRef.current = true;
+        try {
+          canvas.discardActiveObject();
+          canvas.remove(group);
+          primaries.forEach((p) => {
+            (p as any).isSymmetryPrimary = true;
+            delete (p as any).isSymmetryMirror;
+            p.set({ selectable: true, evented: true });
+            p.setCoords();
+          });
+          if (primaries.length > 0) {
+            canvas.insertAt(Math.min(insertIndex, canvas.getObjects().length), ...primaries);
+          }
+        } finally {
+          isSyncingSymmetryRef.current = false;
+        }
+
+        symmetryEditingConfigRef.current = nextCfg;
+        setSymmetryEditingConfig(nextCfg);
+        setActiveTool('pick');
+
+        if (primaries.length === 1) {
+          canvas.setActiveObject(primaries[0]);
+          setSelectedObject(primaries[0]);
+        } else if (primaries.length > 1) {
+          const sel = new fabric.ActiveSelection(primaries, { canvas });
+          canvas.setActiveObject(sel);
+          setSelectedObject(sel);
+        } else {
+          setSelectedObject(null);
+        }
+
+        await syncSymmetryMirrors(nextCfg);
+        showToast('Editing Symmetry — drag axis or edit primary objects');
+      } catch (e) {
+        console.error('Failed to edit symmetry', e);
+      }
+    },
+    [canvas, selectedObject, syncSymmetryMirrors, showToast]
+  );
+
   const handleCreateSymmetry = useCallback(async () => {
-    if (!canvas || !selectedObject) return;
+    if (!canvas) return;
+    if (symmetryEditingConfigRef.current) {
+      showToast('Already editing Symmetry — finish editing first');
+      return;
+    }
+
+    const active = selectedObject || canvas.getActiveObject();
+    if (active && (active as any).isSymmetryGroup) {
+      await handleEditSymmetry(active);
+      return;
+    }
+
     try {
-      const cloned = await selectedObject.clone();
-      const bound = selectedObject.getBoundingRect();
-      cloned.set({
-        left: (cloned.left || 0) + bound.width + 20,
-        flipX: !selectedObject.flipX,
-      });
-      ensureObjectId(cloned, `${getObjectLabel(selectedObject)} (Symmetry)`);
-      canvas.add(cloned);
-      canvas.renderAll();
-      socketService.sendCanvasUpdate(canvas.toJSON(), 'add');
-      pushHistory();
+      let primaries: fabric.FabricObject[] = [];
+      let cfg: SymmetryConfig;
+
+      if (active) {
+        if (active.type === 'activeselection') {
+          const sel = active as fabric.ActiveSelection;
+          primaries = [...sel.getObjects()];
+          canvas.discardActiveObject();
+        } else {
+          primaries = [active];
+        }
+
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        primaries.forEach((p) => {
+          (p as any).isSymmetryPrimary = true;
+          delete (p as any).isSymmetryMirror;
+          p.setCoords();
+          const b = p.getBoundingRect();
+          minX = Math.min(minX, b.left);
+          maxX = Math.max(maxX, b.left + b.width);
+          minY = Math.min(minY, b.top);
+          maxY = Math.max(maxY, b.top + b.height);
+        });
+
+        cfg = {
+          centerX: Number.isFinite(maxX) ? maxX + 16 : pageConfig.width / 2,
+          centerY: Number.isFinite(minY) && Number.isFinite(maxY) ? (minY + maxY) / 2 : pageConfig.height / 2,
+          angleDeg: 0,
+          mirrorLines: 1,
+        };
+      } else {
+        cfg = {
+          centerX: pageConfig.width / 2,
+          centerY: pageConfig.height / 2,
+          angleDeg: 0,
+          mirrorLines: 1,
+        };
+      }
+
+      symmetryEditingConfigRef.current = cfg;
+      setSymmetryEditingConfig(cfg);
+      setActiveTool('pick');
+
+      if (primaries.length === 1) {
+        canvas.setActiveObject(primaries[0]);
+        setSelectedObject(primaries[0]);
+      } else if (primaries.length > 1) {
+        const sel = new fabric.ActiveSelection(primaries, { canvas });
+        canvas.setActiveObject(sel);
+        setSelectedObject(sel);
+      }
+
+      await syncSymmetryMirrors(cfg);
+      pushHistory('Create Symmetry');
+      showToast('Symmetry editing started — adjust mirror lines or edit primary object');
     } catch (e) {
       console.error('Failed to create symmetry', e);
     }
-  }, [canvas, selectedObject, pushHistory]);
+  }, [canvas, selectedObject, pageConfig.width, pageConfig.height, handleEditSymmetry, syncSymmetryMirrors, pushHistory, showToast]);
+
+  const handleFinishSymmetry = useCallback(async () => {
+    if (!canvas || !symmetryEditingConfigRef.current) return;
+    const cfg = { ...symmetryEditingConfigRef.current };
+
+    try {
+      await syncSymmetryMirrors(cfg);
+
+      const allObjs = canvas.getObjects();
+      const primaries = allObjs.filter((o) => (o as any).isSymmetryPrimary && !(o as any).isSymmetryMirror);
+      const mirrors = allObjs.filter((o) => (o as any).isSymmetryMirror);
+
+      symmetrySyncSeqRef.current++;
+      symmetryEditingConfigRef.current = null;
+      setSymmetryEditingConfig(null);
+
+      if (primaries.length === 0) {
+        isSyncingSymmetryRef.current = true;
+        try {
+          mirrors.forEach((m) => canvas.remove(m));
+          canvas.requestRenderAll();
+        } finally {
+          isSyncingSymmetryRef.current = false;
+        }
+        showToast('Exited Symmetry editing');
+        return;
+      }
+
+      const memberIndices = [...primaries, ...mirrors]
+        .map((o) => allObjs.indexOf(o))
+        .filter((i) => i >= 0);
+      const insertIndex = memberIndices.length > 0 ? Math.min(...memberIndices) : allObjs.length;
+
+      isSyncingSymmetryRef.current = true;
+      let symGroup: fabric.Group;
+      try {
+        canvas.discardActiveObject();
+        [...primaries, ...mirrors].forEach((o) => canvas.remove(o));
+
+        symGroup = new fabric.Group([...primaries, ...mirrors], {
+          subTargetCheck: true,
+        });
+        const invMatrix = fabric.util.invertTransform(symGroup.calcTransformMatrix());
+        const localAxisPt = new fabric.Point(cfg.centerX, cfg.centerY).transform(invMatrix);
+        (symGroup as any).isSymmetryGroup = true;
+        (symGroup as any).symmetryConfig = cfg;
+        (symGroup as any).symmetryLocalAxis = { x: localAxisPt.x, y: localAxisPt.y };
+        ensureObjectId(symGroup, 'Symmetry Group');
+
+        canvas.insertAt(Math.min(insertIndex, canvas.getObjects().length), symGroup);
+        canvas.setActiveObject(symGroup);
+        setSelectedObject(symGroup);
+        canvas.requestRenderAll();
+      } finally {
+        isSyncingSymmetryRef.current = false;
+      }
+
+      socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      pushHistory('Finish Editing Symmetry');
+      showToast('Finished editing Symmetry');
+    } catch (e) {
+      console.error('Failed to finish symmetry editing', e);
+    }
+  }, [canvas, syncSymmetryMirrors, pushHistory, showToast]);
+
+  const handleRemoveSymmetry = useCallback(() => {
+    if (!canvas) return;
+
+    if (symmetryEditingConfigRef.current) {
+      symmetrySyncSeqRef.current++;
+      symmetryEditingConfigRef.current = null;
+      setSymmetryEditingConfig(null);
+
+      isSyncingSymmetryRef.current = true;
+      try {
+        canvas.discardActiveObject();
+        const allObjs = canvas.getObjects();
+        const mirrors = allObjs.filter((o) => (o as any).isSymmetryMirror);
+        const primaries = allObjs.filter((o) => (o as any).isSymmetryPrimary && !(o as any).isSymmetryMirror);
+        mirrors.forEach((m) => canvas.remove(m));
+        primaries.forEach((p) => {
+          delete (p as any).isSymmetryPrimary;
+          p.set({ selectable: true, evented: true });
+          p.setCoords();
+        });
+        if (primaries.length === 1) {
+          canvas.setActiveObject(primaries[0]);
+          setSelectedObject(primaries[0]);
+        } else if (primaries.length > 1) {
+          const sel = new fabric.ActiveSelection(primaries, { canvas });
+          canvas.setActiveObject(sel);
+          setSelectedObject(sel);
+        } else {
+          setSelectedObject(null);
+        }
+        canvas.requestRenderAll();
+      } finally {
+        isSyncingSymmetryRef.current = false;
+      }
+
+      socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      pushHistory('Remove Symmetry');
+      showToast('Removed Symmetry');
+      return;
+    }
+
+    const target = selectedObject || canvas.getActiveObject();
+    if (!target || !(target as any).isSymmetryGroup || target.type !== 'group') {
+      showToast('Select a Symmetry group to remove symmetry');
+      return;
+    }
+
+    const group = target as fabric.Group;
+    const insertIndex = Math.max(0, canvas.getObjects().indexOf(group));
+    const children = group.removeAll();
+    let primaries = children.filter((c) => !(c as any).isSymmetryMirror);
+    if (primaries.length === 0 && children.length > 0) {
+      primaries = [children[0]];
+    }
+
+    canvas.discardActiveObject();
+    canvas.remove(group);
+    primaries.forEach((p) => {
+      delete (p as any).isSymmetryPrimary;
+      delete (p as any).isSymmetryMirror;
+      delete (p as any).symmetryCopyIndex;
+      p.set({ selectable: true, evented: true });
+      p.setCoords();
+    });
+    if (primaries.length > 0) {
+      canvas.insertAt(Math.min(insertIndex, canvas.getObjects().length), ...primaries);
+    }
+    if (primaries.length === 1) {
+      canvas.setActiveObject(primaries[0]);
+      setSelectedObject(primaries[0]);
+    } else if (primaries.length > 1) {
+      const sel = new fabric.ActiveSelection(primaries, { canvas });
+      canvas.setActiveObject(sel);
+      setSelectedObject(sel);
+    } else {
+      setSelectedObject(null);
+    }
+    canvas.requestRenderAll();
+    socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+    pushHistory('Remove Symmetry');
+    showToast('Removed Symmetry');
+  }, [canvas, selectedObject, pushHistory, showToast]);
+
+  const handleBreakSymmetryLink = useCallback(() => {
+    if (!canvas) return;
+
+    if (symmetryEditingConfigRef.current) {
+      symmetrySyncSeqRef.current++;
+      symmetryEditingConfigRef.current = null;
+      setSymmetryEditingConfig(null);
+
+      const allObjs = canvas.getObjects();
+      const symMembers = allObjs.filter(
+        (o) => (o as any).isSymmetryPrimary || (o as any).isSymmetryMirror
+      );
+      symMembers.forEach((o) => {
+        delete (o as any).isSymmetryPrimary;
+        delete (o as any).isSymmetryMirror;
+        delete (o as any).symmetryCopyIndex;
+        o.set({ selectable: true, evented: true });
+        o.setCoords();
+      });
+      canvas.discardActiveObject();
+      if (symMembers.length === 1) {
+        canvas.setActiveObject(symMembers[0]);
+        setSelectedObject(symMembers[0]);
+      } else if (symMembers.length > 1) {
+        const sel = new fabric.ActiveSelection(symMembers, { canvas });
+        canvas.setActiveObject(sel);
+        setSelectedObject(sel);
+      } else {
+        setSelectedObject(null);
+      }
+      canvas.requestRenderAll();
+      socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      pushHistory('Break Symmetry Link');
+      showToast('Broke Symmetry link — all objects are now independent');
+      return;
+    }
+
+    const target = selectedObject || canvas.getActiveObject();
+    if (!target || !(target as any).isSymmetryGroup || target.type !== 'group') {
+      showToast('Select a Symmetry group to break symmetry link');
+      return;
+    }
+
+    const group = target as fabric.Group;
+    const insertIndex = Math.max(0, canvas.getObjects().indexOf(group));
+    const children = group.removeAll();
+    canvas.discardActiveObject();
+    canvas.remove(group);
+    children.forEach((c) => {
+      delete (c as any).isSymmetryPrimary;
+      delete (c as any).isSymmetryMirror;
+      delete (c as any).symmetryCopyIndex;
+      c.set({ selectable: true, evented: true });
+      c.setCoords();
+    });
+    if (children.length > 0) {
+      canvas.insertAt(Math.min(insertIndex, canvas.getObjects().length), ...children);
+    }
+    if (children.length === 1) {
+      canvas.setActiveObject(children[0]);
+      setSelectedObject(children[0]);
+    } else if (children.length > 1) {
+      const sel = new fabric.ActiveSelection(children, { canvas });
+      canvas.setActiveObject(sel);
+      setSelectedObject(sel);
+    } else {
+      setSelectedObject(null);
+    }
+    canvas.requestRenderAll();
+    socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+    pushHistory('Break Symmetry Link');
+    showToast('Broke Symmetry link — all copies are now independent objects');
+  }, [canvas, selectedObject, pushHistory, showToast]);
+
+  const handleUpdateSymmetryConfig = useCallback(
+    (patch: Partial<SymmetryConfig>) => {
+      const cur = symmetryEditingConfigRef.current;
+      if (!cur) return;
+      const next: SymmetryConfig = {
+        ...cur,
+        ...patch,
+        mirrorLines: Math.max(1, Math.min(12, Math.round((patch.mirrorLines ?? cur.mirrorLines) || 1))),
+      };
+      symmetryEditingConfigRef.current = next;
+      setSymmetryEditingConfig(next);
+      void syncSymmetryMirrors(next);
+    },
+    [syncSymmetryMirrors]
+  );
+
+  // Live Symmetry canvas sync listener while editing Symmetry
+  useEffect(() => {
+    if (!canvas || !symmetryEditingConfig) return;
+
+    const handleLiveTransform = (opt: any) => {
+      if (isSyncingSymmetryRef.current) return;
+      const target = opt?.target;
+      if (target && (target as any).isSymmetryMirror) return;
+      void syncSymmetryMirrors();
+    };
+
+    const handleObjectAdded = (opt: any) => {
+      if (isSyncingSymmetryRef.current) return;
+      const target = opt?.target;
+      if (
+        !target ||
+        (target as any).isSymmetryMirror ||
+        (target as any).excludeFromExport ||
+        (target as any).isDimension
+      ) {
+        return;
+      }
+      (target as any).isSymmetryPrimary = true;
+      void syncSymmetryMirrors();
+    };
+
+    const handleObjectRemoved = (opt: any) => {
+      if (isSyncingSymmetryRef.current) return;
+      const target = opt?.target;
+      if (target && (target as any).isSymmetryPrimary) {
+        void syncSymmetryMirrors();
+      }
+    };
+
+    canvas.on('object:moving', handleLiveTransform);
+    canvas.on('object:scaling', handleLiveTransform);
+    canvas.on('object:rotating', handleLiveTransform);
+    canvas.on('object:skewing', handleLiveTransform);
+    canvas.on('object:modified', handleLiveTransform);
+    canvas.on('text:changed', handleLiveTransform);
+    canvas.on('object:added', handleObjectAdded);
+    canvas.on('object:removed', handleObjectRemoved);
+
+    return () => {
+      canvas.off('object:moving', handleLiveTransform);
+      canvas.off('object:scaling', handleLiveTransform);
+      canvas.off('object:rotating', handleLiveTransform);
+      canvas.off('object:skewing', handleLiveTransform);
+      canvas.off('object:modified', handleLiveTransform);
+      canvas.off('text:changed', handleLiveTransform);
+      canvas.off('object:added', handleObjectAdded);
+      canvas.off('object:removed', handleObjectRemoved);
+    };
+  }, [canvas, !!symmetryEditingConfig, syncSymmetryMirrors]);
 
   const handleCreateSymbol = useCallback(() => {
     if (!selectedObject) return;
@@ -2287,6 +2811,11 @@ export default function App() {
           handleExitGroupEdit(false);
           return;
         }
+        if (symmetryEditingConfigRef.current) {
+          e.preventDefault();
+          void handleFinishSymmetry();
+          return;
+        }
       }
 
       // '+' key (numpad plus or shift+'=') = Duplicate (CorelDRAW shortcut)
@@ -2475,9 +3004,9 @@ export default function App() {
       if (!isCtrlOrCmd && !e.altKey && (e.key === 'F4' || e.code === 'F4')) {
         e.preventDefault();
         if (e.shiftKey) {
-          setZoomLevel(0.85);
+          handleZoomMode('to_page');
         } else {
-          handleZoomToFitObjects();
+          handleZoomMode('to_fit');
         }
         return;
       }
@@ -2536,6 +3065,44 @@ export default function App() {
         setShowFountainFillModal((prev) => !prev);
         return;
       }
+
+      // Arrow keys = Nudge selected object(s) by configured Nudge Distance
+      if (
+        !e.altKey &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        if (!canvas) return;
+        const activeObj = canvas.getActiveObject();
+        if (!activeObj || (activeObj as any).isEditing) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const baseNudge = pageConfig.nudgeDistance ?? (96 / 25.4) * 0.1;
+        const multiplier = e.shiftKey ? 2 : isCtrlOrCmd ? 0.5 : 1;
+        const step = baseNudge * multiplier;
+
+        let dx = 0;
+        let dy = 0;
+        if (e.key === 'ArrowLeft') dx = -step;
+        else if (e.key === 'ArrowRight') dx = step;
+        else if (e.key === 'ArrowUp') dy = -step;
+        else if (e.key === 'ArrowDown') dy = step;
+
+        const nextLeft = (activeObj.left ?? 0) + dx;
+        const nextTop = (activeObj.top ?? 0) + dy;
+        activeObj.set({ left: nextLeft, top: nextTop });
+        activeObj.setCoords();
+        setProperties((prev) => ({
+          ...prev,
+          x: nextLeft,
+          y: nextTop,
+        }));
+        canvas.requestRenderAll();
+        socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+        pushHistory('Nudge Object');
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
@@ -2572,9 +3139,11 @@ export default function App() {
     handleConvertToCurves,
     handleBreakApart,
     handleCreateSymmetry,
+    handleFinishSymmetry,
     handleOpenProperties,
     handleFullScreenPreview,
     handleZoomToFitObjects,
+    pushHistory,
     showToast,
   ]);
 
@@ -2612,6 +3181,7 @@ export default function App() {
         if (newProps.opacity !== undefined) sel.forEachObject((obj) => obj.set('opacity', newProps.opacity));
         sel.setCoords();
         canvas.renderAll();
+        if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
         socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
         return;
       }
@@ -2672,9 +3242,10 @@ export default function App() {
 
       selectedObject.setCoords();
       canvas.renderAll();
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
       socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
     },
-    [selectedObject, canvas, recordDocumentColor]
+    [selectedObject, canvas, recordDocumentColor, syncSymmetryMirrors]
   );
 
   // Sample fill and stroke colors from canvas object without mutating any previously selected object
@@ -2717,6 +3288,7 @@ export default function App() {
       }
       setProperties((prev) => ({ ...prev, fill: color }));
       canvas.renderAll();
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
       socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
       pushHistory();
     }
@@ -2748,6 +3320,7 @@ export default function App() {
       }
       setProperties((prev) => ({ ...prev, stroke: color }));
       canvas.renderAll();
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
       socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
       pushHistory();
     }
@@ -3153,11 +3726,107 @@ export default function App() {
       if (applyToAll) {
         return prev.map((p) => ({ ...p, ...partial }));
       }
-      const copy = [...prev];
-      copy[activePageIndex] = { ...copy[activePageIndex], ...partial };
-      return copy;
+      const docWideUpdates: Partial<PageConfig> = {};
+      if ('nudgeDistance' in partial) docWideUpdates.nudgeDistance = partial.nudgeDistance;
+      if ('autofitMargin' in partial) docWideUpdates.autofitMargin = partial.autofitMargin;
+      const hasDocWide = Object.keys(docWideUpdates).length > 0;
+      return prev.map((p, idx) => {
+        if (idx === activePageIndex) return { ...p, ...partial };
+        return hasDocWide ? { ...p, ...docWideUpdates } : p;
+      });
     });
   };
+
+  const handleAutofitPage = useCallback(
+    (marginPxOverride?: number) => {
+      if (!canvas) return;
+      if (groupEditStackRef.current.length > 0) {
+        handleExitGroupEdit(true);
+      }
+      const marginPx = Math.max(
+        0,
+        marginPxOverride !== undefined ? marginPxOverride : pageConfig.autofitMargin ?? 0
+      );
+      const objs = canvas
+        .getObjects()
+        .filter((o) => o.visible !== false && !(o as any).excludeFromExport);
+      if (objs.length === 0) {
+        showToast('No objects on page to autofit');
+        return;
+      }
+
+      const prevActive = canvas.getActiveObject();
+      if (prevActive && prevActive.type === 'activeselection') {
+        canvas.discardActiveObject();
+      }
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      objs.forEach((o) => {
+        o.setCoords();
+        const b = o.getBoundingRect();
+        minX = Math.min(minX, b.left);
+        minY = Math.min(minY, b.top);
+        maxX = Math.max(maxX, b.left + b.width);
+        maxY = Math.max(maxY, b.top + b.height);
+      });
+
+      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+        return;
+      }
+
+      const contentW = Math.max(1, maxX - minX);
+      const contentH = Math.max(1, maxY - minY);
+      const newWidth = Math.max(10, Number((contentW + marginPx * 2).toFixed(2)));
+      const newHeight = Math.max(10, Number((contentH + marginPx * 2).toFixed(2)));
+
+      const dx = marginPx - minX;
+      const dy = marginPx - minY;
+
+      if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
+        objs.forEach((o) => {
+          o.set({
+            left: (o.left ?? 0) + dx,
+            top: (o.top ?? 0) + dy,
+          });
+          o.setCoords();
+        });
+      }
+
+      handleUpdatePageConfig({
+        width: newWidth,
+        height: newHeight,
+        preset: 'Custom',
+        orientation: newWidth >= newHeight ? 'landscape' : 'portrait',
+        autofitMargin: marginPx,
+      });
+
+      canvas.requestRenderAll();
+      socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+      pushHistory('Autofit Page');
+
+      setTimeout(() => {
+        handleZoomMode('to_page');
+      }, 30);
+
+      const wDisp = pxToUnit(newWidth, pageConfig.units);
+      const hDisp = pxToUnit(newHeight, pageConfig.units);
+      const unitSym = UNITS_DATA[pageConfig.units]?.symbol || 'px';
+      showToast(`Page fitted to ${wDisp} × ${hDisp} ${unitSym}`);
+    },
+    [
+      canvas,
+      pageConfig.autofitMargin,
+      pageConfig.units,
+      handleExitGroupEdit,
+      pushHistory,
+      showToast,
+      handleZoomMode,
+    ]
+  );
 
   const handleSelectPage = useCallback(async (targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= pages.length || targetIndex === activePageIndex) return;
@@ -4028,26 +4697,16 @@ export default function App() {
         });
         ensureObjectId(label, `${p.objName} Label`);
 
-        const plateFrame = new fabric.Rect({
-          left: imgLeft - 2,
-          top: imgTop - 2,
-          width: drawW + 4,
-          height: drawH + 4,
-          fill: '#ffffff',
-          stroke: '#cbd5e1',
-          strokeWidth: 1,
-        });
-        ensureObjectId(plateFrame, `${p.objName} Frame`);
-
         p.img.set({
           left: imgLeft,
           top: imgTop,
           scaleX: scale,
           scaleY: scale,
+          globalCompositeOperation: 'multiply',
         });
         ensureObjectId(p.img, p.objName);
 
-        canvas.add(swatch, label, plateFrame, p.img);
+        canvas.add(swatch, label, p.img);
       }
 
       canvas.requestRenderAll();
@@ -4117,7 +4776,13 @@ export default function App() {
     const lower = file.name.toLowerCase();
 
     try {
-      if (lower.endsWith('.ndr') || lower.endsWith('.corelweb') || lower.endsWith('.json')) {
+      if (
+        lower.endsWith('.ndr') ||
+        lower.endsWith('.corelweb') ||
+        lower.endsWith('.json') ||
+        lower.endsWith('.dwg') ||
+        lower.endsWith('.dxf')
+      ) {
         const ok = await importFromJSON(file, canvas, (loadedConfig, fullMeta) => {
           if (fullMeta?.pages && fullMeta.pages.length > 0) {
             pageCanvasesRef.current = fullMeta.pageCanvases || {};
@@ -4312,13 +4977,14 @@ export default function App() {
   );
 
   const handleQuickExport = useCallback(
-    (format: 'ndr' | 'svg' | 'pdf' | 'png' | 'json', scale = 2) => {
+    (format: 'ndr' | 'dwg' | 'svg' | 'pdf' | 'png' | 'json', scale = 2) => {
       if (!canvas) return;
       if (groupEditStackRef.current.length > 0) handleExitGroupEdit(true);
       const base = (documentName || 'design').replace(/\.[^/.]+$/, '');
       if (format === 'svg') exportAsSVG(canvas, pageConfig, `${base}.svg`);
       else if (format === 'pdf') exportAsPDF(canvas, pageConfig, `${base}.pdf`);
       else if (format === 'png') exportAsPNG(canvas, pageConfig, scale, `${base}.png`);
+      else if (format === 'dwg') exportAsDWG(canvas, pageConfig, `${base}.dwg`);
       else {
         const json = JSON.stringify(canvas.toObject(SERIALIZE_PROPERTIES as any));
         exportAsNDR(canvas, pageConfig, `${base}.ndr`, {
@@ -4907,15 +5573,15 @@ export default function App() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ndr,.corelweb,.json,.svg"
+        accept=".ndr,.corelweb,.json,.svg,.dwg,.dxf"
         onChange={handleOpenJSONFile}
         className="hidden"
       />
-      {/* Hidden file input for Importing Images / SVG / NDR / Files */}
+      {/* Hidden file input for Importing Images / SVG / NDR / DWG / Files */}
       <input
         ref={importInputRef}
         type="file"
-        accept="image/*,.svg,.ndr,.corelweb,.json"
+        accept="image/*,.svg,.ndr,.corelweb,.json,.dwg,.dxf"
         onChange={handleImportMediaFile}
         className="hidden"
       />
@@ -4958,6 +5624,7 @@ export default function App() {
         onZoomOut={() => setZoomLevel((z) => Math.max(0.01, Number((z * 0.8).toFixed(4))))}
         onZoomFit={() => setZoomLevel(0.85)}
         onZoomSet={(z) => setZoomLevel(Math.min(4096, Math.max(0.01, z)))}
+        onZoomMode={handleZoomMode}
         zoomLevel={zoomLevel}
         showGrid={showGrid}
         onToggleGrid={() => setShowGrid((g) => !g)}
@@ -5003,6 +5670,13 @@ export default function App() {
         onPowerClipEdit={handlePowerClipEdit}
         onPowerClipFinish={handlePowerClipFinish}
         isPowerClipEditing={!!powerClipEditingObj}
+        symmetryEditingConfig={symmetryEditingConfig}
+        onUpdateSymmetryConfig={handleUpdateSymmetryConfig}
+        onCreateSymmetry={handleCreateSymmetry}
+        onEditSymmetry={handleEditSymmetry}
+        onFinishSymmetry={handleFinishSymmetry}
+        onRemoveSymmetry={handleRemoveSymmetry}
+        onBreakSymmetryLink={handleBreakSymmetryLink}
         onAlign={handleAlign}
         onConvertToCurves={handleConvertToCurves}
         curveEditState={curveEditState}
@@ -5026,6 +5700,7 @@ export default function App() {
         onSaveAsTemplate={handleSaveAsTemplate}
         onRevert={handleRevertDocument}
         canSave={isDirty || canUndo}
+        isDirty={isDirty}
         canRevert={isDirty && !!lastSavedSnapshotRef.current}
         onAcquireImage={handleAcquireImage}
         onImport={() => importInputRef.current?.click()}
@@ -5103,6 +5778,7 @@ export default function App() {
         onTextAction={handleTextAction}
         onEffectAction={handleEffectAction}
         onOpenQrCode={() => setShowQrCodeModal(true)}
+        onOpenRandomFiller={() => setShowRandomFillerModal(true)}
         showProjectTimer={showProjectTimer}
         onToggleProjectTimer={() => setShowProjectTimer((prev) => !prev)}
         projectTimerSeconds={currentTimerState.totalSeconds}
@@ -5112,6 +5788,7 @@ export default function App() {
         cropToolsConfig={cropToolsConfig}
         onUpdateCropToolsConfig={handleUpdateCropToolsConfig}
         onCropAction={handleCropAction}
+        onAutofitPage={handleAutofitPage}
         currentFill={currentFill}
         currentStroke={currentStroke}
       />
@@ -5228,12 +5905,19 @@ export default function App() {
           onOpenProperties={handleOpenProperties}
           onAlignToPixelGrid={handleAlignToPixelGrid}
           onCreateSymmetry={handleCreateSymmetry}
+          onEditSymmetry={handleEditSymmetry}
+          onFinishSymmetry={handleFinishSymmetry}
+          onRemoveSymmetry={handleRemoveSymmetry}
+          onBreakSymmetryLink={handleBreakSymmetryLink}
+          symmetryEditingConfig={symmetryEditingConfig}
+          onUpdateSymmetryConfig={handleUpdateSymmetryConfig}
           onCreateSymbol={handleCreateSymbol}
           onCurveStateChange={setCurveEditState}
           onRegisterCurveActionHandler={handleRegisterCurveActionHandler}
           cropToolsConfig={cropToolsConfig}
           onUpdateCropToolsConfig={handleUpdateCropToolsConfig}
           onRegisterCropActionHandler={handleRegisterCropActionHandler}
+          onRegisterZoomModeHandler={handleRegisterZoomModeHandler}
           viewQualityMode={viewQualityMode}
           proofColors={proofColors}
           simulateOverprints={simulateOverprints}
@@ -5339,6 +6023,43 @@ export default function App() {
                 className="px-3 py-1 bg-white text-[#005a9e] hover:bg-sky-50 rounded text-xs font-bold shadow-xs cursor-pointer"
               >
                 Finish Editing
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Live Symmetry Editing Banner */}
+        {symmetryEditingConfig && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#0078d7] text-white px-4 py-2 rounded-md shadow-2xl flex items-center gap-3 border border-sky-300">
+            <IconSymmetryCreate className="w-5 h-5 text-white shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-xs font-bold">
+                Editing Symmetry ({symmetryEditingConfig.mirrorLines}{' '}
+                {symmetryEditingConfig.mirrorLines === 1 ? 'Mirror Line' : 'Mirror Lines'} •{' '}
+                {Math.round(symmetryEditingConfig.angleDeg)}°)
+              </span>
+              <span className="text-[10.5px] text-sky-100">
+                Edit objects or drag the blue mirror axis/handle. Press Esc or Finish when done.
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 ml-2 shrink-0">
+              <button
+                onClick={handleBreakSymmetryLink}
+                className="px-2.5 py-1 bg-white/15 hover:bg-white/25 text-white rounded text-xs font-semibold cursor-pointer border border-white/30"
+              >
+                Break Link
+              </button>
+              <button
+                onClick={handleRemoveSymmetry}
+                className="px-2.5 py-1 bg-red-500/85 hover:bg-red-600 text-white rounded text-xs font-semibold cursor-pointer border border-red-300/40"
+              >
+                Remove
+              </button>
+              <button
+                onClick={() => void handleFinishSymmetry()}
+                className="px-3 py-1 bg-white text-[#005a9e] hover:bg-sky-50 rounded text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Finish Editing Symmetry
               </button>
             </div>
           </div>
@@ -5530,6 +6251,7 @@ export default function App() {
         selectionLabel={selectionLabel}
         zoomLevel={zoomLevel}
         onZoomChange={setZoomLevel}
+        onZoomMode={handleZoomMode}
         pages={pages}
         activePageIndex={activePageIndex}
         onSelectPage={handleSelectPage}
@@ -5583,6 +6305,23 @@ export default function App() {
           setDocumentName(savedFilename);
           recordRecentFile(savedFilename, json);
         }}
+      />
+
+      {/* Random Filler Floating Tool Window (Tools -> Random Filler...) */}
+      <RandomFillerModal
+        canvas={canvas}
+        pageConfig={pageConfig}
+        isOpen={showRandomFillerModal}
+        onClose={() => setShowRandomFillerModal(false)}
+        theme={theme}
+        onFillCommitted={(label, count) => {
+          if (!canvas) return;
+          setHasCanvasObjects(canvas.getObjects().length > 0);
+          pushHistory(label);
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          showToast(`Random Filler: placed ${count} object(s) inside target`);
+        }}
+        onToast={showToast}
       />
 
       {/* Text Menu Dialogs (Edit Text, Statistics, Change Case, Tabs, Columns, Bullets, Drop Cap, Encode) */}

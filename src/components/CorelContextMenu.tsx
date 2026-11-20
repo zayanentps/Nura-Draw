@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as fabric from 'fabric';
 import { ThemeMode } from '../types';
+import {
+  IconSymmetryCreate,
+  IconSymmetryEdit,
+  IconSymmetryFinish,
+  IconSymmetryRemove,
+  IconSymmetryBreak,
+} from './CorelTopPanelIcons';
 
 export interface CorelContextMenuProps {
   x: number;
@@ -49,6 +56,11 @@ export interface CorelContextMenuProps {
   onOpenPageSetup?: () => void;
   onAlignToPixelGrid?: () => void;
   onCreateSymmetry?: () => void;
+  onEditSymmetry?: () => void;
+  onFinishSymmetry?: () => void;
+  onRemoveSymmetry?: () => void;
+  onBreakSymmetryLink?: () => void;
+  isSymmetryEditing?: boolean;
   onCreateSymbol?: () => void;
 }
 
@@ -93,6 +105,11 @@ export const CorelContextMenu: React.FC<CorelContextMenuProps> = ({
   onOpenPageSetup,
   onAlignToPixelGrid,
   onCreateSymmetry,
+  onEditSymmetry,
+  onFinishSymmetry,
+  onRemoveSymmetry,
+  onBreakSymmetryLink,
+  isSymmetryEditing = false,
   onCreateSymbol,
 }) => {
   const isDark = theme === 'dark';
@@ -103,6 +120,7 @@ export const CorelContextMenu: React.FC<CorelContextMenuProps> = ({
   const hasSelection = !!selectedObject;
   const isGroup = !!selectedObject && selectedObject.type === 'group';
   const isMultiSelect = !!selectedObject && selectedObject.type === 'activeselection';
+  const isSymmetryGroup = !!(selectedObject && (selectedObject as any).isSymmetryGroup);
   const isPC =
     selectedObject &&
     ((selectedObject as any).isPowerClip || (selectedObject as any).customType === 'powerclip');
@@ -685,25 +703,80 @@ export const CorelContextMenu: React.FC<CorelContextMenuProps> = ({
       {/* Divider */}
       <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-200'}`} />
 
-      {/* 12. Create New Symmetry */}
-      <button
-        disabled={!hasSelection}
-        onClick={() => handleAction(onCreateSymmetry)}
-        className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-inherit group cursor-pointer transition-colors"
-      >
-        <div className="flex items-center gap-2.5">
-          <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Symmetry icon with green plus */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <circle cx="5" cy="8" r="3" />
-              <circle cx="11" cy="8" r="3" />
-              <path d="M12 2v4M10 4h4" stroke="#10b981" strokeWidth="1.5" />
-            </svg>
-          </span>
-          <span><span className="underline">C</span>reate New Symmetry</span>
-        </div>
-        <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Alt+S</span>
-      </button>
+      {/* 12. Symmetry Actions */}
+      {isSymmetryEditing ? (
+        <>
+          <button
+            onClick={() => handleAction(onFinishSymmetry)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left bg-sky-50 dark:bg-sky-900/30 hover:bg-[#0078d7] hover:text-white text-sky-700 dark:text-sky-300 font-semibold group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryFinish className="w-4 h-4 shrink-0" />
+              <span>Finish Editing Symmetry</span>
+            </div>
+          </button>
+          <button
+            onClick={() => handleAction(onBreakSymmetryLink)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryBreak className="w-4 h-4 shrink-0" />
+              <span>Break Symmetry Link</span>
+            </div>
+          </button>
+          <button
+            onClick={() => handleAction(onRemoveSymmetry)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryRemove className="w-4 h-4 shrink-0" />
+              <span>Remove Symmetry</span>
+            </div>
+          </button>
+        </>
+      ) : isSymmetryGroup ? (
+        <>
+          <button
+            onClick={() => handleAction(onEditSymmetry)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryEdit className="w-4 h-4 shrink-0" />
+              <span>Edit Symmetry</span>
+            </div>
+          </button>
+          <button
+            onClick={() => handleAction(onBreakSymmetryLink)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryBreak className="w-4 h-4 shrink-0" />
+              <span>Break Symmetry Link</span>
+            </div>
+          </button>
+          <button
+            onClick={() => handleAction(onRemoveSymmetry)}
+            className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <IconSymmetryRemove className="w-4 h-4 shrink-0" />
+              <span>Remove Symmetry</span>
+            </div>
+          </button>
+        </>
+      ) : (
+        <button
+          disabled={!hasSelection}
+          onClick={() => handleAction(onCreateSymmetry)}
+          className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-inherit group cursor-pointer transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <IconSymmetryCreate className="w-4 h-4 shrink-0" />
+            <span><span className="underline">C</span>reate New Symmetry</span>
+          </div>
+          <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Alt+S</span>
+        </button>
+      )}
 
       {/* 13. Create New Symbol */}
       <button
