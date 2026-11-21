@@ -1,6 +1,6 @@
 import * as fabric from 'fabric';
 import jsPDF, { GState } from 'jspdf';
-import { PageConfig } from '../types';
+import { PageConfig, ParametricState } from '../types';
 import { disableObjectCaching } from './canvasHelpers';
 
 export interface CorelExportFormat {
@@ -1562,6 +1562,7 @@ export interface NdrProjectExtraData {
   activePageIndex?: number;
   pageCanvases?: Record<number, string>;
   serializeProps?: string[];
+  parametricState?: ParametricState;
 }
 
 export function buildNdrString(
@@ -1602,6 +1603,7 @@ export function buildNdrString(
     pages: extra?.pages,
     activePageIndex: extra?.activePageIndex ?? 0,
     pageCanvases: extra?.pageCanvases,
+    parametricState: extra?.parametricState,
     canvasData,
   };
 
@@ -1637,6 +1639,7 @@ export interface FullNdrLoadMeta {
   pages?: PageConfig[];
   activePageIndex?: number;
   pageCanvases?: Record<number, string>;
+  parametricState?: ParametricState;
 }
 
 export async function importFromJSON(
@@ -1670,11 +1673,12 @@ export async function importFromJSON(
 
     if (data) {
       const fullMeta: FullNdrLoadMeta | undefined =
-        data.pages || data.pageCanvases
+        data.pages || data.pageCanvases || data.parametricState
           ? {
               pages: data.pages,
               activePageIndex: data.activePageIndex,
               pageCanvases: data.pageCanvases,
+              parametricState: data.parametricState,
             }
           : undefined;
 

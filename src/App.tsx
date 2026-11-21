@@ -16,6 +16,9 @@ import {
   CropActionType,
   ZoomPresetMode,
   SymmetryConfig,
+  ParametricState,
+  GeometricConstraintType,
+  DimConstraintKind,
 } from './types';
 import { socketService } from './services/socketService';
 import { CorelTopPanel } from './components/CorelTopPanel';
@@ -47,6 +50,23 @@ import { EffectToolsModal, EffectDialogState } from './components/EffectToolsMod
 import { QrCodeModal } from './components/QrCodeModal';
 import { RandomFillerModal } from './components/RandomFillerModal';
 import { FountainFillModal } from './components/FountainFillModal';
+import { MetallicTextModal } from './components/MetallicTextModal';
+import {
+  DEFAULT_METALLIC_CONFIG,
+  METALLIC_PRESETS,
+  applyMetallicEffectToSelection,
+  readMetallicConfigFromObject,
+  removeMetallicEffectFromSelection,
+} from './utils/metallicEffect';
+import { ParametersManagerModal } from './components/ParametersManagerModal';
+import {
+  EMPTY_PARAMETRIC_STATE,
+  solveParametricSystem,
+  createDimConstraint,
+  createGeomConstraint,
+  autoConstrainObjects,
+  pruneOrphanedConstraints,
+} from './utils/parametricEngine';
 import {
   ProjectTimerWindow,
   ProjectTimerState,
@@ -199,7 +219,7 @@ export default function App() {
   const [showDocNavigator, setShowDocNavigator] = useState<boolean>(true);
   const [showScrollbars, setShowScrollbars] = useState<boolean>(true);
 
-  // CorelDRAW Snapping state (Page, Objects, Document Grid)
+  // CorelDRAW Snapping state (Page, Objects, Document Grid, AutoCAD Ortho)
   const [snapConfig, setSnapConfig] = useState<SnapConfig>({
     enabled: true,
     snapToGrid: false,
@@ -207,6 +227,7 @@ export default function App() {
     snapToGuidelines: true,
     snapToObjects: true,
     snapToPage: true,
+    orthoMode: false,
     gridSize: 20,
     snapThreshold: 14,
   });
@@ -261,9 +282,18 @@ export default function App() {
   const [exportDefaultFormat, setExportDefaultFormat] = useState<'ndr' | 'dwg' | 'svg' | 'pdf' | 'png' | 'json'>('ndr');
   const [exportDialogMode, setExportDialogMode] = useState<'save' | 'export'>('save');
   const [showRandomFillerModal, setShowRandomFillerModal] = useState<boolean>(false);
+  const [parametricState, setParametricState] = useState<ParametricState>(EMPTY_PARAMETRIC_STATE);
+  const parametricStateRef = useRef<ParametricState>(parametricState);
+  parametricStateRef.current = parametricState;
+  const isSolvingParametricRef = useRef<boolean>(false);
+  const [showParametersManager, setShowParametersManager] = useState<boolean>(false);
 
   // Text Menu State & Dialogs
   const [activeTextDialog, setActiveTextDialog] = useState<TextDialogKind>(null);
+  const [showMetallicModal, setShowMetallicModal] = useState<boolean>(false);
+  const [metallicInitialPreset, setMetallicInitialPreset] = useState<
+    import('./types').MetallicPresetId | null
+  >(null);
   const [showNonPrintingChars, setShowNonPrintingChars] = useState<boolean>(false);
   const [useHyphenation, setUseHyphenation] = useState<boolean>(false);
   const [showTextFrames, setShowTextFrames] = useState<boolean>(false);
@@ -714,6 +744,8 @@ export default function App() {
     'isSymmetryPrimary',
     'isSymmetryMirror',
     'symmetryCopyIndex',
+    'metallicEffectConfig',
+    'preMetallicBackup',
   ];
 
   // Push history state helper
@@ -1921,6 +1953,217 @@ export default function App() {
     };
   }, [canvas, !!symmetryEditingConfig, syncSymmetryMirrors]);
 
+  // Live Parametric & Constraints Solver (keeps GCON & DCON enforced during moves/edits)
+  useEffect(() => {
+    if (!canvas) return;
+
+    const runLiveSolve = (opt: any, isFinal: boolean) => {
+      if (isSolvingParametricRef.current) return;
+      const st = parametricStateRef.current;
+      if (st.dimConstraints.length === 0 && st.geomConstraints.length === 0) return;
+
+      const target = opt?.target;
+      if (!target || (target as any).excludeFromExport || (target as any).isDimension) return;
+      const movedId = (target as any).id as string | undefined;
+
+      isSolvingParametricRef.current = true;
+      try {
+        const res = solveParametricSystem(canvas, st, pageConfig.units, {
+          movedObjectId: movedId,
+          iterations: isFinal ? 10 : 5,
+        });
+        if (isFinal && res.nextState !== st) {
+          setParametricState(res.nextState);
+        }
+      } finally {
+        isSolvingParametricRef.current = false;
+      }
+    };
+
+    const onLive = (opt: any) => runLiveSolve(opt, false);
+    const onFinal = (opt: any) => runLiveSolve(opt, true);
+    const onRemoved = () => {
+      const st = parametricStateRef.current;
+      if (st.dimConstraints.length === 0 && st.geomConstraints.length === 0) return;
+      const pruned = pruneOrphanedConstraints(canvas, st);
+      if (pruned !== st) setParametricState(pruned);
+    };
+
+    canvas.on('object:moving', onLive);
+    canvas.on('object:scaling', onLive);
+    canvas.on('object:rotating', onLive);
+    canvas.on('object:modified', onFinal);
+    canvas.on('object:removed', onRemoved);
+
+    return () => {
+      canvas.off('object:moving', onLive);
+      canvas.off('object:scaling', onLive);
+      canvas.off('object:rotating', onLive);
+      canvas.off('object:modified', onFinal);
+      canvas.off('object:removed', onRemoved);
+    };
+  }, [canvas, pageConfig.units]);
+
+  const handleUpdateParametricState = useCallback(
+    (next: ParametricState, solve = false) => {
+      if (!canvas || !solve) {
+        setParametricState(next);
+        return;
+      }
+      isSolvingParametricRef.current = true;
+      try {
+        const res = solveParametricSystem(canvas, next, pageConfig.units, { iterations: 12 });
+        setParametricState(res.nextState);
+        if (res.mutated) {
+          canvas.requestRenderAll();
+          setHasCanvasObjects(canvas.getObjects().length > 0);
+          pushHistory('Solve Parametric');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+      } finally {
+        isSolvingParametricRef.current = false;
+      }
+    },
+    [canvas, pageConfig.units, pushHistory]
+  );
+
+  const getSelectedTargetObjects = useCallback((): fabric.FabricObject[] => {
+    if (!canvas) return [];
+    const active = canvas.getActiveObject();
+    if (!active) return [];
+    if (active.type === 'activeselection') {
+      return [...(active as fabric.ActiveSelection).getObjects()];
+    }
+    return [active];
+  }, [canvas]);
+
+  const handleAddDimConstraint = useCallback(
+    (kind: DimConstraintKind) => {
+      if (!canvas) return;
+      const objs = getSelectedTargetObjects();
+      if (objs.length === 0) {
+        showToast('Select 1 object (for size/angle) or 2 objects (for distance) first.');
+        return;
+      }
+      isSolvingParametricRef.current = true;
+      try {
+        const res = createDimConstraint(canvas, parametricStateRef.current, kind, objs, pageConfig.units);
+        if (res.error) {
+          showToast(res.error);
+          return;
+        }
+        setParametricState(res.state);
+        canvas.requestRenderAll();
+        pushHistory(`DCON ${kind}`);
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        showToast(`Applied ${kind} constraint (${res.created?.name} = ${res.created?.expression})`);
+      } finally {
+        isSolvingParametricRef.current = false;
+      }
+    },
+    [canvas, getSelectedTargetObjects, pageConfig.units, pushHistory, showToast]
+  );
+
+  const handleEditDimConstraint = useCallback(
+    (dimId: string, newExpression: string) => {
+      const next: ParametricState = {
+        ...parametricStateRef.current,
+        dimConstraints: parametricStateRef.current.dimConstraints.map((d) =>
+          d.id === dimId ? { ...d, expression: newExpression } : d
+        ),
+      };
+      handleUpdateParametricState(next, true);
+    },
+    [handleUpdateParametricState]
+  );
+
+  const handleDeleteDimConstraint = useCallback((dimId: string) => {
+    setParametricState((prev) => ({
+      ...prev,
+      dimConstraints: prev.dimConstraints.filter((d) => d.id !== dimId),
+    }));
+    showToast('Removed dimensional constraint');
+  }, [showToast]);
+
+  const handleAddGeomConstraint = useCallback(
+    (type: GeometricConstraintType) => {
+      if (!canvas) return;
+      const objs = getSelectedTargetObjects();
+      isSolvingParametricRef.current = true;
+      try {
+        const res = createGeomConstraint(canvas, parametricStateRef.current, type, objs, pageConfig.units);
+        if (res.error) {
+          showToast(res.error);
+          return;
+        }
+        setParametricState(res.state);
+        canvas.requestRenderAll();
+        pushHistory(`GCON ${type}`);
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        showToast(`Applied ${type.toUpperCase()} geometric constraint`);
+      } finally {
+        isSolvingParametricRef.current = false;
+      }
+    },
+    [canvas, getSelectedTargetObjects, pageConfig.units, pushHistory, showToast]
+  );
+
+  const handleDeleteGeomConstraint = useCallback((geomId: string) => {
+    setParametricState((prev) => ({
+      ...prev,
+      geomConstraints: prev.geomConstraints.filter((g) => g.id !== geomId),
+    }));
+    showToast('Removed geometric constraint');
+  }, [showToast]);
+
+  const handleAutoConstrain = useCallback(() => {
+    if (!canvas) return;
+    const sel = getSelectedTargetObjects();
+    const targets = sel.length > 0 ? sel : canvas.getObjects();
+    if (targets.length === 0) {
+      showToast('Draw or select objects first to run AutoConstrain.');
+      return;
+    }
+    isSolvingParametricRef.current = true;
+    try {
+      const res = autoConstrainObjects(canvas, parametricStateRef.current, targets, pageConfig.units);
+      setParametricState(res.state);
+      canvas.requestRenderAll();
+      if (res.addedCount > 0) {
+        pushHistory('AutoConstrain');
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        showToast(`AutoConstrain applied ${res.addedCount} geometric constraint(s)`);
+      } else {
+        showToast('No new matching geometric constraints detected');
+      }
+    } finally {
+      isSolvingParametricRef.current = false;
+    }
+  }, [canvas, getSelectedTargetObjects, pageConfig.units, pushHistory, showToast]);
+
+  const handleClearSelectedConstraints = useCallback(() => {
+    const selIds = new Set(getSelectedTargetObjects().map((o) => (o as any).id).filter(Boolean));
+    if (selIds.size === 0) {
+      showToast('Select object(s) to remove their constraints.');
+      return;
+    }
+    setParametricState((prev) => ({
+      ...prev,
+      dimConstraints: prev.dimConstraints.filter((d) => !d.objectIds.some((id) => selIds.has(id))),
+      geomConstraints: prev.geomConstraints.filter((g) => !g.objectIds.some((id) => selIds.has(id))),
+    }));
+    showToast('Cleared constraints on selected object(s)');
+  }, [getSelectedTargetObjects, showToast]);
+
+  const handleClearAllConstraints = useCallback(() => {
+    setParametricState((prev) => ({
+      ...prev,
+      dimConstraints: [],
+      geomConstraints: [],
+    }));
+    showToast('Cleared all geometric & dimensional constraints');
+  }, [showToast]);
+
   const handleCreateSymbol = useCallback(() => {
     if (!selectedObject) return;
     (selectedObject as any).isSymbol = true;
@@ -2982,6 +3225,18 @@ export default function App() {
         e.stopPropagation();
         setActiveTool('ellipse');
         showToast('Ellipse Tool (F7)');
+        return;
+      }
+
+      // Shift+F8 or Alt+F8 = Toggle AutoCAD Ortho Mode (keeps F8 for CorelDRAW Text Tool)
+      if (!isCtrlOrCmd && (e.shiftKey || e.altKey) && (e.key === 'F8' || e.code === 'F8')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSnapConfig((prev) => {
+          const next = !prev.orthoMode;
+          showToast(next ? 'Ortho Mode: ON (0° / 90°)' : 'Ortho Mode: OFF');
+          return { ...prev, orthoMode: next };
+        });
         return;
       }
 
@@ -4755,6 +5010,7 @@ export default function App() {
         setPages([loadedConfig]);
         setActivePageIndex(0);
       }
+      setParametricState(fullMeta?.parametricState || EMPTY_PARAMETRIC_STATE);
     });
     if (success) {
       setDocumentName(file.name);
@@ -4792,6 +5048,9 @@ export default function App() {
             pageCanvasesRef.current = {};
             setPages([loadedConfig]);
             setActivePageIndex(0);
+          }
+          if (fullMeta?.parametricState) {
+            setParametricState(fullMeta.parametricState);
           }
         });
         if (ok) {
@@ -5095,6 +5354,7 @@ export default function App() {
       canvas.clear();
       canvas.renderAll();
       setSelectedObject(null);
+      setParametricState(EMPTY_PARAMETRIC_STATE);
       setShowWelcomeScreen(true);
     }
   }, [docTabs, activeDocTab, canvas]);
@@ -5107,6 +5367,7 @@ export default function App() {
       canvas.renderAll();
       setSelectedObject(null);
     }
+    setParametricState(EMPTY_PARAMETRIC_STATE);
     setDocTabs(['Untitled-1']);
     setActiveDocTab('Untitled-1');
     setDocumentName('Untitled-1');
@@ -5450,6 +5711,44 @@ export default function App() {
           showToast('Converted text font to Web-compatible Arial');
           break;
         }
+
+        case 'metallic_preset': {
+          const presetId = (payload || 'gold') as import('./types').MetallicPresetId;
+          const activeObjs = canvas.getActiveObjects();
+          setMetallicInitialPreset(presetId);
+          setShowMetallicModal(true);
+          if (activeObjs.length === 0) {
+            showToast('Select any Text or Object first to apply Metallic Effect');
+            return;
+          }
+          const existing = readMetallicConfigFromObject(activeObjs[0]);
+          const nextCfg = { ...DEFAULT_METALLIC_CONFIG, ...existing, preset: presetId };
+          applyMetallicEffectToSelection(canvas, nextCfg);
+          setSelectedObject(canvas.getActiveObject() || null);
+          pushHistory(`Metallic ${METALLIC_PRESETS[presetId].label}`);
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          showToast(`Applied ${METALLIC_PRESETS[presetId].label} metallic effect`);
+          break;
+        }
+
+        case 'metallic_adjust': {
+          setMetallicInitialPreset(null);
+          setShowMetallicModal(true);
+          break;
+        }
+
+        case 'metallic_remove': {
+          const removed = removeMetallicEffectFromSelection(canvas);
+          if (removed === 0) {
+            showToast('Select an object with Metallic Effect first');
+            return;
+          }
+          setSelectedObject(canvas.getActiveObject() || null);
+          pushHistory('Remove Metallic Effect');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          showToast('Removed metallic effect');
+          break;
+        }
       }
     },
     [canvas, pushHistory, showToast]
@@ -5791,6 +6090,20 @@ export default function App() {
         onAutofitPage={handleAutofitPage}
         currentFill={currentFill}
         currentStroke={currentStroke}
+        parametricState={parametricState}
+        onOpenParametersManager={() => setShowParametersManager(true)}
+        onAddDimConstraint={handleAddDimConstraint}
+        onAddGeomConstraint={handleAddGeomConstraint}
+        onAutoConstrain={handleAutoConstrain}
+        onToggleShowConstraints={() =>
+          setParametricState((prev) => ({ ...prev, showConstraints: !prev.showConstraints }))
+        }
+        onSolveConstraints={() => {
+          handleUpdateParametricState(parametricStateRef.current, true);
+          showToast('Re-evaluated all parametric formulas & constraints');
+        }}
+        onClearSelectedConstraints={handleClearSelectedConstraints}
+        onClearAllConstraints={handleClearAllConstraints}
       />
 
       {/* Main Workspace (Left Toolbox + Center Canvas + Right Dockers) */}
@@ -5930,6 +6243,11 @@ export default function App() {
           showDocNavigator={showDocNavigator}
           showScrollbars={showScrollbars}
           onObjectsCountChange={(cnt) => setHasCanvasObjects(cnt > 0)}
+          parametricState={parametricState}
+          onEditDimConstraint={handleEditDimConstraint}
+          onDeleteDimConstraint={handleDeleteDimConstraint}
+          onDeleteGeomConstraint={handleDeleteGeomConstraint}
+          onOpenParametersManager={() => setShowParametersManager(true)}
         />
 
         {/* PowerClip Target Picking Indicator Banner */}
@@ -6259,6 +6577,14 @@ export default function App() {
         theme={theme}
         currentFill={currentFill}
         currentStroke={currentStroke}
+        orthoMode={!!snapConfig.orthoMode}
+        onToggleOrtho={() =>
+          setSnapConfig((prev) => {
+            const next = !prev.orthoMode;
+            showToast(next ? 'Ortho Mode: ON (0° / 90°)' : 'Ortho Mode: OFF');
+            return { ...prev, orthoMode: next };
+          })
+        }
       />
 
       {/* Document Palette Editor & Nested Select Color Dialog */}
@@ -6290,6 +6616,7 @@ export default function App() {
                   [activePageIndex]: JSON.stringify(canvas.toObject(SERIALIZE_PROPERTIES as any)),
                 },
                 serializeProps: SERIALIZE_PROPERTIES,
+                parametricState,
               }
             : undefined
         }
@@ -6307,6 +6634,20 @@ export default function App() {
         }}
       />
 
+      {/* Parameters Manager Modal (PARAMETERS / PAR) */}
+      <ParametersManagerModal
+        isOpen={showParametersManager}
+        onClose={() => setShowParametersManager(false)}
+        canvas={canvas}
+        parametricState={parametricState}
+        onUpdateState={handleUpdateParametricState}
+        onAutoConstrain={handleAutoConstrain}
+        onAddDimConstraint={handleAddDimConstraint}
+        onAddGeomConstraint={handleAddGeomConstraint}
+        unit={pageConfig.units}
+        theme={theme}
+      />
+
       {/* Random Filler Floating Tool Window (Tools -> Random Filler...) */}
       <RandomFillerModal
         canvas={canvas}
@@ -6320,6 +6661,25 @@ export default function App() {
           pushHistory(label);
           socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
           showToast(`Random Filler: placed ${count} object(s) inside target`);
+        }}
+        onToast={showToast}
+      />
+
+      {/* Metallic Text & Object Effect Floating Window (Text -> Metallic Text & Effect) */}
+      <MetallicTextModal
+        canvas={canvas}
+        isOpen={showMetallicModal}
+        initialPreset={metallicInitialPreset}
+        onClose={() => {
+          setShowMetallicModal(false);
+          setMetallicInitialPreset(null);
+        }}
+        theme={theme}
+        onCommitted={(label) => {
+          if (!canvas) return;
+          setSelectedObject(canvas.getActiveObject() || null);
+          pushHistory(label);
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
         }}
         onToast={showToast}
       />

@@ -574,13 +574,21 @@ export function findNearestOsnapPoint(
   return null;
 }
 
+export function isOrthoActive(
+  snapConfig?: SnapConfig | null,
+  shiftKey: boolean = false
+): boolean {
+  // AutoCAD behavior: Shift temporarily overrides Ortho state (turns ON when off, OFF when on)
+  return snapConfig?.orthoMode ? !shiftKey : shiftKey;
+}
+
 /**
- * AutoCAD Ortho (Shift -> strict 0/90/180/270) & Polar Tracking (45° increments within ±4°).
+ * AutoCAD Ortho (strict 0/90/180/270) & Polar Tracking (45° increments within ±4°).
  */
 export function applyPolarOrOrthoConstraint(
   origin: { x: number; y: number },
   cursor: { x: number; y: number },
-  shiftKey: boolean,
+  orthoActive: boolean,
   polarEnabled: boolean,
   zoomLevel: number = 1
 ): { point: { x: number; y: number }; polarGuide: PolarGuide | null } {
@@ -592,8 +600,8 @@ export function applyPolarOrOrthoConstraint(
     return { point: cursor, polarGuide: null };
   }
 
-  // Strict Ortho (F8 / Shift): snap cleanly to horizontal or vertical axis
-  if (shiftKey) {
+  // Strict Ortho (AutoCAD ORTHO / Shift): snap cleanly to horizontal or vertical axis
+  if (orthoActive) {
     if (Math.abs(dx) >= Math.abs(dy)) {
       const angleDeg = dx >= 0 ? 0 : 180;
       const pt = { x: cursor.x, y: origin.y };
@@ -640,6 +648,49 @@ export function applyPolarOrOrthoConstraint(
 }
 
 /**
+ * Resolves cursor point with AutoCAD Ortho Mode + optional OSNAP projection.
+ * When Ortho is active and an OSNAP target is hit, projects onto the active horizontal/vertical Ortho ray.
+ */
+export function projectPointWithOrthoAndOsnap(
+  origin: { x: number; y: number },
+  rawCursor: { x: number; y: number },
+  osnapPoint: { x: number; y: number } | null,
+  orthoActive: boolean,
+  polarEnabled: boolean,
+  zoomLevel: number = 1
+): { point: { x: number; y: number }; polarGuide: PolarGuide | null } {
+  if (orthoActive) {
+    const targetForAxis = osnapPoint || rawCursor;
+    const dx = targetForAxis.x - origin.x;
+    const dy = targetForAxis.y - origin.y;
+    if (Math.hypot(dx, dy) < 1e-3) {
+      return { point: targetForAxis, polarGuide: null };
+    }
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const angleDeg = dx >= 0 ? 0 : 180;
+      const pt = { x: targetForAxis.x, y: origin.y };
+      return {
+        point: pt,
+        polarGuide: { origin, point: pt, angleDeg, isOrtho: true },
+      };
+    } else {
+      const angleDeg = dy >= 0 ? 90 : -90;
+      const pt = { x: origin.x, y: targetForAxis.y };
+      return {
+        point: pt,
+        polarGuide: { origin, point: pt, angleDeg, isOrtho: true },
+      };
+    }
+  }
+
+  if (osnapPoint) {
+    return { point: osnapPoint, polarGuide: null };
+  }
+
+  return applyPolarOrOrthoConstraint(origin, rawCursor, false, polarEnabled, zoomLevel);
+}
+
+/**
  * AutoCAD-grade Smooth Object Snapping for Moving Objects:
  * 1. Zero random 1D axis sticking across unrelated objects.
  * 2. Priority 1: Grabbed point 2D OSNAP lock (Endpoint, Midpoint, Center, Quadrant, Intersection).
@@ -674,12 +725,11 @@ export function calculateObjectSnapping(
   const threshold = Math.min(26, Math.max(2.5, baseScreenThreshold / (zoomLevel || 1)));
   const gridSize = snapConfig.gridSize || 20;
 
-  const candidateTargetPoints = collectCandidateOsnapPoints(
-    allObjects,
-    target,
-    pageConfig,
-    snapConfig
-  );
+  const orthoActive = isOrthoActive(snapConfig, shiftKey);
+
+  const candidateTargetPoints = snapConfig.enabled
+    ? collectCandidateOsnapPoints(allObjects, target, pageConfig, snapConfig)
+    : [];
 
   const snapLines: SnapGuideline[] = [];
   const activeMarkers: SnapMarker[] = [];
@@ -700,8 +750,8 @@ export function calculateObjectSnapping(
     const moveRes = applyPolarOrOrthoConstraint(
       { x: dragOrigin.left, y: dragOrigin.top },
       { x: currentLeft, y: currentTop },
-      shiftKey,
-      true,
+      orthoActive,
+      !!snapConfig.enabled,
       zoomLevel
     );
     if (moveRes.polarGuide) {
@@ -725,8 +775,8 @@ export function calculateObjectSnapping(
   const deltaFromCurrentX = workLeft - currentLeft;
   const deltaFromCurrentY = workTop - currentTop;
 
-  // PRIORITY 1: Grabbed Point 2D OSNAP Lock
-  if (grabbedPoint && candidateTargetPoints.length > 0) {
+  // PRIORITY 1: Grabbed Point 2D OSNAP Lock (disabled for diagonal jumps when strict Ortho is active; Priority 3 handles 1D Ortho-axis OSNAP)
+  if (!orthoActive && grabbedPoint && candidateTargetPoints.length > 0) {
     const curGrabbedX = workLeft + grabbedPoint.offsetFromOrigin.dx;
     const curGrabbedY = workTop + grabbedPoint.offsetFromOrigin.dy;
 
@@ -749,8 +799,8 @@ export function calculateObjectSnapping(
     }
   }
 
-  // PRIORITY 2: Body-Drag 2D OSNAP Lock (any object feature point locking onto any target OSNAP)
-  if (!best2DLock && candidateTargetPoints.length > 0) {
+  // PRIORITY 2: Body-Drag 2D OSNAP Lock (disabled for diagonal jumps when strict Ortho is active)
+  if (!orthoActive && !best2DLock && candidateTargetPoints.length > 0) {
     const sourcePoints = extractMovingObjectPoints(target);
     let bestOverall: {
       target: CalculatedSnapPoint;
@@ -893,14 +943,16 @@ export function calculateObjectSnapping(
     };
   }
 
-  // PRIORITY 4: Grid Snap fallback (only if explicitly enabled by user)
-  if (snapConfig.snapToGrid && gridSize > 0) {
+  // PRIORITY 4: Grid Snap fallback (only if explicitly enabled by user; respects active Ortho axis)
+  if (snapConfig.enabled && snapConfig.snapToGrid && gridSize > 0) {
     const gx = Math.round(workLeft / gridSize) * gridSize;
     const gy = Math.round(workTop / gridSize) * gridSize;
     const dxG = gx - workLeft;
     const dyG = gy - workTop;
-    const finalLeft = Math.abs(dxG) <= threshold ? gx : workLeft;
-    const finalTop = Math.abs(dyG) <= threshold ? gy : workTop;
+    const isHorizOrtho = orthoActive && polarGuide && (Math.abs(polarGuide.angleDeg) === 0 || Math.abs(polarGuide.angleDeg) === 180);
+    const isVertOrtho = orthoActive && polarGuide && Math.abs(polarGuide.angleDeg) === 90;
+    const finalLeft = !isVertOrtho && Math.abs(dxG) <= threshold ? gx : workLeft;
+    const finalTop = !isHorizOrtho && Math.abs(dyG) <= threshold ? gy : workTop;
 
     if (finalLeft !== workLeft || finalTop !== workTop) {
       activeMarkers.push({

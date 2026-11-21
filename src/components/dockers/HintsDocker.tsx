@@ -164,10 +164,10 @@ export const HintsDocker: React.FC<HintsDockerProps> = ({
     },
     line2p: {
       title: '2-Point Line Tool',
-      desc: 'Draws a straight line segment between a starting point and an ending point.',
+      desc: 'Draws a straight line segment with two clicks: click start point P1, move cursor, and click end point P2.',
       shortcuts: [
-        'Drag P1 → P2: Draw straight vector line',
-        'Shift: Constrain to 15° / 45° / 90° polar angles',
+        '1st Click → Move → 2nd Click: Create line segment',
+        'Shift / ORTHO: Constrain to 0° / 90° | Esc: Cancel',
       ],
     },
     bezier: {

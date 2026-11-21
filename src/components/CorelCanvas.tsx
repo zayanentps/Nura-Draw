@@ -18,8 +18,10 @@ import {
   CropRegion,
   ZoomPresetMode,
   SymmetryConfig,
+  ParametricState,
 } from '../types';
 import { getSymmetryAxisLines } from '../utils/symmetryEngine';
+import { computeParametricOverlays } from '../utils/parametricEngine';
 import {
   ensureObjectId,
   disableObjectCaching,
@@ -49,6 +51,8 @@ import {
   getObjectCenterlineCorners,
   findNearestOsnapPoint,
   applyPolarOrOrthoConstraint,
+  isOrthoActive,
+  projectPointWithOrthoAndOsnap,
   GrabbedPointInfo,
   PolarGuide,
 } from '../utils/snappingEngine';
@@ -632,6 +636,11 @@ interface CorelCanvasProps {
   showScrollbars?: boolean;
   onObjectsCountChange?: (count: number) => void;
   dimensionConfig?: DimensionConfig;
+  parametricState?: ParametricState;
+  onEditDimConstraint?: (dimId: string, newExpression: string) => void;
+  onDeleteDimConstraint?: (dimId: string) => void;
+  onDeleteGeomConstraint?: (geomId: string) => void;
+  onOpenParametersManager?: () => void;
 }
 
 export const CorelCanvas: React.FC<CorelCanvasProps> = ({
@@ -727,6 +736,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   showScrollbars = true,
   onObjectsCountChange,
   dimensionConfig,
+  parametricState,
+  onEditDimConstraint,
+  onDeleteDimConstraint,
+  onDeleteGeomConstraint,
+  onOpenParametersManager,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const deskRef = useRef<HTMLDivElement | null>(null);
@@ -749,6 +763,12 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   const [activePolarGuide, setActivePolarGuide] = useState<PolarGuide | null>(null);
   const [cadHud, setCadHud] = useState<{ x: number; y: number; text: string; swatches?: [string, string] } | null>(null);
   const [bezierRubberBand, setBezierRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const line2pStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [line2pPreview, setLine2pPreview] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [paramOverlayTick, setParamOverlayTick] = useState(0);
+  const [editingDim, setEditingDim] = useState<{ id: string; name: string; expr: string; x: number; y: number } | null>(null);
+  const parametricStateRef = useRef<ParametricState | undefined>(parametricState);
+  parametricStateRef.current = parametricState;
 
   const viewQualityModeRef = useRef<ViewQualityMode>(viewQualityMode);
   viewQualityModeRef.current = viewQualityMode;
@@ -838,7 +858,17 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   const addNodeModeRef = useRef<boolean>(false);
   const curveDragRef = useRef<
     | null
-    | { mode: 'node'; lastX: number; lastY: number; primaryCmdIndex: number; didMutate: boolean }
+    | {
+        mode: 'node';
+        lastX: number;
+        lastY: number;
+        startX: number;
+        startY: number;
+        origNodeX: number;
+        origNodeY: number;
+        primaryCmdIndex: number;
+        didMutate: boolean;
+      }
     | { mode: 'handle'; nodeCmdIndex: number; which: 'cp1' | 'cp2'; didMutate: boolean }
     | { mode: 'segment'; cmdIndex: number; t: number; didMutate: boolean }
     | { mode: 'marquee'; startX: number; startY: number; clickedTarget: fabric.FabricObject | null }
@@ -970,52 +1000,6 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       resizeObserver.observe(deskRef.current);
     }
 
-    // Initial default shapes for quick preview if canvas is empty
-    const welcomeRect = new fabric.Rect({
-      left: 100,
-      top: 120,
-      originX: 'left',
-      originY: 'top',
-      width: 280,
-      height: 180,
-      fill: '#00a651',
-      stroke: '#005826',
-      strokeWidth: 2,
-      strokeUniform: true,
-      objectCaching: false,
-      rx: 12,
-      ry: 12,
-    });
-    ensureObjectId(welcomeRect, 'Corel Banner');
-
-    const welcomeCircle = new fabric.Circle({
-      left: 320,
-      top: 220,
-      originX: 'left',
-      originY: 'top',
-      radius: 80,
-      fill: '#ed1c24',
-      stroke: '#790000',
-      strokeWidth: 2,
-      strokeUniform: true,
-      objectCaching: false,
-      opacity: 0.9,
-    });
-    ensureObjectId(welcomeCircle, 'Accent Circle');
-
-    const welcomeText = new fabric.IText('CorelDRAW Web', {
-      left: 130,
-      top: 180,
-      originX: 'left',
-      originY: 'top',
-      fontFamily: 'Montserrat',
-      fontSize: 26,
-      fontWeight: 'bold',
-      fill: '#ffffff',
-    });
-    ensureObjectId(welcomeText, 'Title Text');
-
-    canvas.add(welcomeRect, welcomeCircle, welcomeText);
     canvas.renderAll();
 
     // Event listeners for selection
@@ -1092,6 +1076,13 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         socketService.sendCanvasUpdate(canvas.toJSON(), 'modify', (target as any).id, target.toJSON());
       }
       onCanvasModified?.();
+      if (
+        parametricStateRef.current?.showConstraints &&
+        (parametricStateRef.current.dimConstraints.length > 0 ||
+          parametricStateRef.current.geomConstraints.length > 0)
+      ) {
+        setParamOverlayTick((t) => (t + 1) % 10000);
+      }
     };
 
     canvas.on('object:modified', handleModified);
@@ -1312,6 +1303,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
     if (activeTool !== 'curve_3p') {
       curve3pStepRef.current = null;
       setCurve3pOverlay(null);
+    }
+    if (activeTool !== 'line2p') {
+      line2pStartRef.current = null;
+      setLine2pPreview(null);
     }
 
     if (activeTool !== 'angular_dimension') {
@@ -1902,6 +1897,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                 mode: 'node',
                 lastX: pointer.x,
                 lastY: pointer.y,
+                startX: pointer.x,
+                startY: pointer.y,
+                origNodeX: node.x,
+                origNodeY: node.y,
                 primaryCmdIndex: node.cmdIndex,
                 didMutate: false,
               };
@@ -2068,12 +2067,22 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           return;
         }
         if (st.phase === 'chord') {
-          let p2 = resolveSnappedPoint(pointer, st.p1);
-          if (p2.x === pointer.x && p2.y === pointer.y && (evt.shiftKey || currentSnap?.enabled)) {
-            p2 = applyPolarOrOrthoConstraint(st.p1, pointer, evt.shiftKey, !!currentSnap?.enabled, curZoom).point;
-          }
+          const osnap = currentSnap?.enabled
+            ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), activeTempShapeRef.current, pageConfigRef.current, currentSnap, curZoom, st.p1)
+            : null;
+          const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+          const polar = projectPointWithOrthoAndOsnap(
+            st.p1,
+            pointer,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
+            !!currentSnap?.enabled,
+            curZoom
+          );
+          const p2 = polar.point;
           curve3pStepRef.current = { p1: st.p1, p2, phase: 'apex' };
           setCurve3pOverlay({ p1: st.p1, p2, apex: p2 });
+          setActivePolarGuide(null);
           setCadHud({ x: p2.x, y: p2.y, text: 'Move to bow arc & click P3' });
           return;
         }
@@ -2155,17 +2164,26 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           return;
         }
 
-        let nextPt = resolveSnappedPoint(pointer, prevNode);
-        if (
-          prevNode &&
-          nextPt.x === pointer.x &&
-          nextPt.y === pointer.y &&
-          (evt.shiftKey || currentSnap?.enabled)
-        ) {
-          const polar = applyPolarOrOrthoConstraint(
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(
+              pointer.x,
+              pointer.y,
+              canvas.getObjects(),
+              bezierPreviewRef.current,
+              pageConfigRef.current,
+              currentSnap,
+              curZoom,
+              prevNode
+            )
+          : null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        let nextPt = osnap ? { x: osnap.x, y: osnap.y } : { x: pointer.x, y: pointer.y };
+        if (prevNode) {
+          const polar = projectPointWithOrthoAndOsnap(
             prevNode,
             pointer,
-            evt.shiftKey,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
             !!currentSnap?.enabled,
             curZoom
           );
@@ -2339,8 +2357,16 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
 
       // Angular Dimension Tool (3-click: Vertex -> Ray 1 -> Ray 2)
       if (activeTool === 'angular_dimension') {
-        const pt = resolveSnappedPoint(pointer, angularStepRef.current?.vertex || null);
         const curStep = angularStepRef.current;
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, curStep?.vertex || null)
+          : null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const pt = curStep?.vertex
+          ? projectPointWithOrthoAndOsnap(curStep.vertex, pointer, osnap ? { x: osnap.x, y: osnap.y } : null, orthoActive, !!currentSnap?.enabled, curZoom).point
+          : osnap
+          ? { x: osnap.x, y: osnap.y }
+          : { x: pointer.x, y: pointer.y };
         if (!curStep) {
           angularStepRef.current = { vertex: pt };
           setDimOverlay({ kind: 'angular', vx: pt.x, vy: pt.y, cursor: pt });
@@ -2388,8 +2414,17 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
 
       // 3-Point Callout Tool (Click Target -> Click Elbow -> Click Horizontal Shoulder)
       if (activeTool === 'callout') {
-        const pt = resolveSnappedPoint(pointer, calloutStepRef.current?.p2 || calloutStepRef.current?.p1 || null);
         const curStep = calloutStepRef.current;
+        const refOrigin = curStep?.p2 || curStep?.p1 || null;
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, refOrigin)
+          : null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const pt = refOrigin
+          ? projectPointWithOrthoAndOsnap(refOrigin, pointer, osnap ? { x: osnap.x, y: osnap.y } : null, orthoActive, !!currentSnap?.enabled, curZoom).point
+          : osnap
+          ? { x: osnap.x, y: osnap.y }
+          : { x: pointer.x, y: pointer.y };
         if (!curStep) {
           calloutStepRef.current = { p1: pt };
           setDimOverlay({ kind: 'callout', p1: pt, cursor: pt });
@@ -2457,8 +2492,74 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         }
       }
 
-      // 2-Point Line, Parallel/HV/Segment Dimension, Connector with OSNAP start point
-      if (['line2p', 'dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool)) {
+      // 2-Point Line (1st click sets start P1, move previews with Ortho/OSNAP, 2nd click creates line)
+      if (activeTool === 'line2p') {
+        if (!line2pStartRef.current) {
+          const startPt = resolveSnappedPoint(pointer);
+          line2pStartRef.current = startPt;
+          setLine2pPreview({ x1: startPt.x, y1: startPt.y, x2: startPt.x, y2: startPt.y });
+          setHoverSnapMarker(null);
+          setCadHud({ x: startPt.x, y: startPt.y, text: 'Click end point P2 (Esc to cancel)' });
+          return;
+        }
+
+        const startPt = line2pStartRef.current;
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(
+              pointer.x,
+              pointer.y,
+              canvas.getObjects(),
+              null,
+              pageConfigRef.current,
+              currentSnap,
+              curZoom,
+              startPt
+            )
+          : null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const polar = projectPointWithOrthoAndOsnap(
+          startPt,
+          pointer,
+          osnap ? { x: osnap.x, y: osnap.y } : null,
+          orthoActive,
+          !!currentSnap?.enabled,
+          curZoom
+        );
+        const endPt = polar.point;
+
+        line2pStartRef.current = null;
+        setLine2pPreview(null);
+        setActivePolarGuide(null);
+        setActiveSnapMarkers([]);
+        setHoverSnapMarker(null);
+        setCadHud(null);
+
+        if (Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y) >= 1) {
+          const lineObj = new fabric.Line([startPt.x, startPt.y, endPt.x, endPt.y], {
+            stroke: currentStroke || '#000000',
+            strokeWidth: properties.strokeWidth || 2,
+            strokeUniform: true,
+            objectCaching: false,
+            originX: 'left',
+            originY: 'top',
+          });
+          ensureObjectId(lineObj, '2-Point Line');
+          if (isPowerClipEditing) {
+            (lineObj as any).isPowerClipContent = true;
+          }
+          canvas.add(lineObj);
+          canvas.setActiveObject(lineObj);
+          lineObj.setCoords();
+          canvas.requestRenderAll();
+          onSelectTool('pick');
+          socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (lineObj as any).id, lineObj.toJSON());
+          onCanvasModified?.();
+        }
+        return;
+      }
+
+      // Parallel/HV/Segment Dimension, Connector with OSNAP start point
+      if (['dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool)) {
         const startPt = resolveSnappedPoint(pointer);
         isDrawingShapeRef.current = true;
         shapeStartRef.current = startPt;
@@ -2754,25 +2855,29 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
 
         if (drag && curPath && curData) {
           if (drag.mode === 'node') {
-            let dx = pointer.x - drag.lastX;
-            let dy = pointer.y - drag.lastY;
             const pNode = curData.nodes.find((n) => n.cmdIndex === drag.primaryCmdIndex);
+            const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+            const rawTarget = pNode
+              ? {
+                  x: drag.origNodeX + (pointer.x - drag.startX),
+                  y: drag.origNodeY + (pointer.y - drag.startY),
+                }
+              : { x: pointer.x, y: pointer.y };
 
+            let osnapPt: { x: number; y: number } | null = null;
             if (pNode && currentSnap?.enabled) {
-              const candX = pNode.x + dx;
-              const candY = pNode.y + dy;
               const osnap = findNearestOsnapPoint(
-                candX,
-                candY,
+                rawTarget.x,
+                rawTarget.y,
                 canvas.getObjects(),
                 curPath,
                 pageConfigRef.current,
                 currentSnap,
-                curZoom
+                curZoom,
+                orthoActive ? { x: drag.origNodeX, y: drag.origNodeY } : null
               );
               if (osnap) {
-                dx = osnap.x - pNode.x;
-                dy = osnap.y - pNode.y;
+                osnapPt = { x: osnap.x, y: osnap.y };
                 setActiveSnapMarkers([
                   {
                     id: `node-osnap-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
@@ -2789,6 +2894,25 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               setActiveSnapMarkers([]);
             }
 
+            let dx = pointer.x - drag.lastX;
+            let dy = pointer.y - drag.lastY;
+            let activeGuide: PolarGuide | null = null;
+
+            if (pNode) {
+              const res = projectPointWithOrthoAndOsnap(
+                { x: drag.origNodeX, y: drag.origNodeY },
+                rawTarget,
+                osnapPt,
+                orthoActive,
+                false,
+                curZoom
+              );
+              dx = res.point.x - pNode.x;
+              dy = res.point.y - pNode.y;
+              activeGuide = res.polarGuide;
+            }
+            setActivePolarGuide(activeGuide);
+
             if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
               moveCurveNodes(curPath, selectedNodeIndicesRef.current, dx, dy);
               drag.lastX += dx;
@@ -2798,7 +2922,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                 setCadHud({
                   x: pNode.x + dx,
                   y: pNode.y + dy,
-                  text: `Node (${Math.round(pNode.x + dx)}, ${Math.round(pNode.y + dy)})`,
+                  text: `Node (${Math.round(pNode.x + dx)}, ${Math.round(pNode.y + dy)})${activeGuide?.isOrtho ? ' · ORTHO' : ''}`,
                 });
               }
               syncCurveOverlay(curPath);
@@ -2810,16 +2934,24 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           if (drag.mode === 'handle') {
             let hx = pointer.x;
             let hy = pointer.y;
-            if (evt.shiftKey) {
+            const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+            if (orthoActive) {
               const pNode = curData.nodes.find((n) => n.cmdIndex === drag.nodeCmdIndex);
               if (pNode) {
-                const vx = hx - pNode.x;
-                const vy = hy - pNode.y;
-                const dist = Math.hypot(vx, vy);
-                const angle = Math.round(Math.atan2(vy, vx) / (Math.PI / 4)) * (Math.PI / 4);
-                hx = pNode.x + Math.cos(angle) * dist;
-                hy = pNode.y + Math.sin(angle) * dist;
+                const res = projectPointWithOrthoAndOsnap(
+                  { x: pNode.x, y: pNode.y },
+                  pointer,
+                  null,
+                  true,
+                  false,
+                  curZoom
+                );
+                hx = res.point.x;
+                hy = res.point.y;
+                setActivePolarGuide(res.polarGuide);
               }
+            } else {
+              setActivePolarGuide(null);
             }
             moveCurveHandle(curPath, drag.nodeCmdIndex, drag.which, hx, hy);
             drag.didMutate = true;
@@ -2892,11 +3024,65 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
+      // 2-Point Line Live Rubber-Band Preview (after 1st click, waiting for 2nd click)
+      if (activeTool === 'line2p' && line2pStartRef.current) {
+        const start = line2pStartRef.current;
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(
+              pointer.x,
+              pointer.y,
+              canvas.getObjects(),
+              null,
+              pageConfigRef.current,
+              currentSnap,
+              curZoom,
+              start
+            )
+          : null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const polar = projectPointWithOrthoAndOsnap(
+          start,
+          pointer,
+          osnap ? { x: osnap.x, y: osnap.y } : null,
+          orthoActive,
+          !!currentSnap?.enabled,
+          curZoom
+        );
+        const endPt = polar.point;
+
+        setHoverSnapMarker(null);
+        if (osnap) {
+          setActiveSnapMarkers([
+            {
+              id: `line2p-osnap-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
+              x: osnap.x,
+              y: osnap.y,
+              type: osnap.type,
+              label: osnap.label,
+            },
+          ]);
+        } else {
+          setActiveSnapMarkers([]);
+        }
+        setActivePolarGuide(polar.polarGuide);
+        setLine2pPreview({ x1: start.x, y1: start.y, x2: endPt.x, y2: endPt.y });
+
+        const len = Math.round(Math.hypot(endPt.x - start.x, endPt.y - start.y));
+        let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
+        if (deg < 0) deg += 360;
+        setCadHud({
+          x: endPt.x,
+          y: endPt.y,
+          text: `${len} px  ∠ ${deg}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+        });
+        return;
+      }
+
       // Active Shape / Line / Dimension Drawing with AutoCAD OSNAP + Polar/Ortho + Dynamic Input HUD
       if (isDrawingShapeRef.current && activeTempShapeRef.current) {
         const start = shapeStartRef.current;
         const shape = activeTempShapeRef.current;
-        const isLinearTool = ['line2p', 'dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool);
+        const isLinearTool = ['dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool);
 
         const osnap = currentSnap?.enabled
           ? findNearestOsnapPoint(
@@ -2912,9 +3098,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           : null;
 
         let endPt = { x: pointer.x, y: pointer.y };
+        let currentGuide: PolarGuide | null = null;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
 
         if (osnap) {
-          endPt = { x: osnap.x, y: osnap.y };
           setActiveSnapMarkers([
             {
               id: `draw-osnap-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
@@ -2924,20 +3111,26 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               label: osnap.label,
             },
           ]);
-          setActivePolarGuide(null);
-        } else if (isLinearTool && activeTool !== 'hv_dimension') {
-          const polar = applyPolarOrOrthoConstraint(
+        } else {
+          setActiveSnapMarkers([]);
+        }
+
+        if (isLinearTool && activeTool !== 'hv_dimension') {
+          const polar = projectPointWithOrthoAndOsnap(
             start,
             pointer,
-            evt.shiftKey,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
             !!currentSnap?.enabled,
             curZoom
           );
           endPt = polar.point;
-          setActiveSnapMarkers([]);
+          currentGuide = polar.polarGuide;
           setActivePolarGuide(polar.polarGuide);
         } else {
-          setActiveSnapMarkers([]);
+          if (osnap) {
+            endPt = { x: osnap.x, y: osnap.y };
+          }
           setActivePolarGuide(null);
         }
 
@@ -2973,12 +3166,20 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               pageConfigRef.current.units,
               dimensionConfigRef.current
             );
-            setCadHud({ x: endPt.x, y: endPt.y, text: `${formatted}  ∠ ${deg}°` });
+            setCadHud({
+              x: endPt.x,
+              y: endPt.y,
+              text: `${formatted}  ∠ ${deg}°${currentGuide?.isOrtho ? '  ORTHO' : ''}`,
+            });
           } else {
             const len = Math.round(Math.hypot(endPt.x - start.x, endPt.y - start.y));
             let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
             if (deg < 0) deg += 360;
-            setCadHud({ x: endPt.x, y: endPt.y, text: `${len} px  ∠ ${deg}°` });
+            setCadHud({
+              x: endPt.x,
+              y: endPt.y,
+              text: `${len} px  ∠ ${deg}°${currentGuide?.isOrtho ? '  ORTHO' : ''}`,
+            });
           }
           canvas.requestRenderAll();
           return;
@@ -3039,13 +3240,23 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       // 3-Point Curve live preview (chord drag or apex bow)
       if (activeTool === 'curve_3p' && curve3pStepRef.current) {
         const st = curve3pStepRef.current;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
         const osnap = currentSnap?.enabled
           ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, st.p1)
           : null;
         let curPt = osnap ? { x: osnap.x, y: osnap.y } : { x: pointer.x, y: pointer.y };
-        if (!osnap && st.phase === 'chord') {
-          const polar = applyPolarOrOrthoConstraint(st.p1, pointer, evt.shiftKey, !!currentSnap?.enabled, curZoom);
+        let currentGuide: PolarGuide | null = null;
+        if (st.phase === 'chord') {
+          const polar = projectPointWithOrthoAndOsnap(
+            st.p1,
+            pointer,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
+            !!currentSnap?.enabled,
+            curZoom
+          );
           curPt = polar.point;
+          currentGuide = polar.polarGuide;
           setActivePolarGuide(polar.polarGuide);
         } else {
           setActivePolarGuide(null);
@@ -3055,7 +3266,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           st.p2 = curPt;
           setCurve3pOverlay({ p1: st.p1, p2: curPt, apex: null });
           const len = Math.round(Math.hypot(curPt.x - st.p1.x, curPt.y - st.p1.y));
-          setCadHud({ x: curPt.x, y: curPt.y, text: `Chord: ${len} px (Release or click P2)` });
+          setCadHud({
+            x: curPt.x,
+            y: curPt.y,
+            text: `Chord: ${len} px${currentGuide?.isOrtho ? ' · ORTHO' : ''} (Release or click P2)`,
+          });
         } else if (st.phase === 'apex' && st.p2) {
           setCurve3pOverlay({ p1: st.p1, p2: st.p2, apex: curPt });
           setCadHud({ x: curPt.x, y: curPt.y, text: `Click P3 to set curve arc` });
@@ -3120,9 +3335,18 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               )
             : null;
 
-          let endPt = { x: pointer.x, y: pointer.y };
+          const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+          const polar = projectPointWithOrthoAndOsnap(
+            lastNode,
+            pointer,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
+            !!currentSnap?.enabled,
+            curZoom
+          );
+          let endPt = polar.point;
+
           if (osnap) {
-            endPt = { x: osnap.x, y: osnap.y };
             setHoverSnapMarker({
               id: `bezier-hover-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
               x: osnap.x,
@@ -3130,19 +3354,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               type: osnap.type,
               label: osnap.label,
             });
-            setActivePolarGuide(null);
           } else {
-            const polar = applyPolarOrOrthoConstraint(
-              lastNode,
-              pointer,
-              evt.shiftKey,
-              !!currentSnap?.enabled,
-              curZoom
-            );
-            endPt = polar.point;
             setHoverSnapMarker(null);
-            setActivePolarGuide(polar.polarGuide);
           }
+          setActivePolarGuide(polar.polarGuide);
 
           const firstNode = nodes[0];
           const minCloseCount = activeTool === 'b_spline' ? 3 : 2;
@@ -3161,7 +3376,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           const len = Math.round(Math.hypot(endPt.x - lastNode.x, endPt.y - lastNode.y));
           let deg = Math.round(((Math.atan2(endPt.y - lastNode.y, endPt.x - lastNode.x) * 180) / Math.PI) * 10) / 10;
           if (deg < 0) deg += 360;
-          setCadHud({ x: endPt.x, y: endPt.y, text: `${len} px  ∠ ${deg}°` });
+          setCadHud({
+            x: endPt.x,
+            y: endPt.y,
+            text: `${len} px  ∠ ${deg}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+          });
           return;
         }
       } else {
@@ -3172,10 +3391,20 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       // Multi-step Angular Dimension live preview
       if (activeTool === 'angular_dimension' && angularStepRef.current) {
         const st = angularStepRef.current;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
         const osnap = currentSnap?.enabled
           ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, st.vertex)
           : null;
-        const curPt = osnap ? { x: osnap.x, y: osnap.y } : { x: pointer.x, y: pointer.y };
+        const polar = projectPointWithOrthoAndOsnap(
+          st.vertex,
+          pointer,
+          osnap ? { x: osnap.x, y: osnap.y } : null,
+          orthoActive,
+          !!currentSnap?.enabled,
+          curZoom
+        );
+        const curPt = polar.point;
+        setActivePolarGuide(polar.polarGuide);
         setDimOverlay({
           kind: 'angular',
           vx: st.vertex.x,
@@ -3190,10 +3419,18 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           while (delta > Math.PI) delta -= Math.PI * 2;
           while (delta < -Math.PI) delta += Math.PI * 2;
           const deg = (Math.abs(delta) * 180) / Math.PI;
-          setCadHud({ x: curPt.x, y: curPt.y, text: `Angle: ${deg.toFixed(1)}°` });
+          setCadHud({
+            x: curPt.x,
+            y: curPt.y,
+            text: `Angle: ${deg.toFixed(1)}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+          });
         } else {
           const r = Math.round(Math.hypot(curPt.x - st.vertex.x, curPt.y - st.vertex.y));
-          setCadHud({ x: curPt.x, y: curPt.y, text: `Ray 1 (${r} px)` });
+          setCadHud({
+            x: curPt.x,
+            y: curPt.y,
+            text: `Ray 1 (${r} px)${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+          });
         }
         return;
       }
@@ -3201,10 +3438,21 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       // Multi-step 3-Point Callout live preview
       if (activeTool === 'callout' && calloutStepRef.current) {
         const st = calloutStepRef.current;
+        const refOrigin = st.p2 || st.p1;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
         const osnap = currentSnap?.enabled
-          ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, st.p2 || st.p1)
+          ? findNearestOsnapPoint(pointer.x, pointer.y, canvas.getObjects(), null, pageConfigRef.current, currentSnap, curZoom, refOrigin)
           : null;
-        const curPt = osnap ? { x: osnap.x, y: osnap.y } : { x: pointer.x, y: pointer.y };
+        const polar = projectPointWithOrthoAndOsnap(
+          refOrigin,
+          pointer,
+          osnap ? { x: osnap.x, y: osnap.y } : null,
+          orthoActive,
+          !!currentSnap?.enabled,
+          curZoom
+        );
+        const curPt = polar.point;
+        setActivePolarGuide(polar.polarGuide);
         setDimOverlay({
           kind: 'callout',
           p1: st.p1,
@@ -3214,7 +3462,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         setCadHud({
           x: curPt.x,
           y: curPt.y,
-          text: st.p2 ? 'Click to place callout label' : 'Click elbow point',
+          text: `${st.p2 ? 'Click to place callout label' : 'Click elbow point'}${polar.polarGuide?.isOrtho ? ' · ORTHO' : ''}`,
         });
         return;
       }
@@ -3268,14 +3516,19 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       // Knife Tool live cut line preview
       if (activeTool === 'knife' && knifeStartRef.current) {
         const start = knifeStartRef.current;
-        const polar = applyPolarOrOrthoConstraint(start, pointer, evt.shiftKey, !!currentSnap?.enabled, curZoom);
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const polar = applyPolarOrOrthoConstraint(start, pointer, orthoActive, !!currentSnap?.enabled, curZoom);
         const endPt = polar.point;
         setKnifePreviewLine({ x1: start.x, y1: start.y, x2: endPt.x, y2: endPt.y });
         setActivePolarGuide(polar.polarGuide);
         const len = Math.round(Math.hypot(endPt.x - start.x, endPt.y - start.y));
         let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
         if (deg < 0) deg += 360;
-        setCadHud({ x: endPt.x, y: endPt.y, text: `Cut: ${len} px  ∠ ${deg}°` });
+        setCadHud({
+          x: endPt.x,
+          y: endPt.y,
+          text: `Cut: ${len} px  ∠ ${deg}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+        });
         return;
       }
 
@@ -3568,7 +3821,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         const evt = opt.e as MouseEvent;
         const pointer = canvas.getScenePoint(evt);
         const curZoom = zoomLevelRef.current || 1;
-        const polar = applyPolarOrOrthoConstraint(start, pointer, evt.shiftKey, !!snapConfigRef.current?.enabled, curZoom);
+        const orthoActive = isOrthoActive(snapConfigRef.current, evt.shiftKey);
+        const polar = applyPolarOrOrthoConstraint(start, pointer, orthoActive, !!snapConfigRef.current?.enabled, curZoom);
         const endPt = polar.point;
         setKnifePreviewLine(null);
         setActivePolarGuide(null);
@@ -3946,6 +4200,13 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           setActivePolarGuide(null);
           setCadHud(null);
           onSelectTool('pick');
+        } else if (activeTool === 'line2p' && line2pStartRef.current) {
+          line2pStartRef.current = null;
+          setLine2pPreview(null);
+          setActivePolarGuide(null);
+          setActiveSnapMarkers([]);
+          setCadHud(null);
+          onSelectTool('pick');
         } else if (activeTool === 'curve_3p' && curve3pStepRef.current) {
           curve3pStepRef.current = null;
           setCurve3pOverlay(null);
@@ -4053,7 +4314,17 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
     const canvas = fabricRef.current;
     if (!target || !canvas) return;
 
-    if (!currentSnap || !currentSnap.enabled) {
+    if (
+      parametricStateRef.current?.showConstraints &&
+      (parametricStateRef.current.dimConstraints.length > 0 ||
+        parametricStateRef.current.geomConstraints.length > 0)
+    ) {
+      setParamOverlayTick((t) => (t + 1) % 10000);
+    }
+
+    const orthoActive = isOrthoActive(currentSnap, shiftKeyRef.current);
+
+    if (!currentSnap || (!currentSnap.enabled && !orthoActive)) {
       setActiveSnapLines((prev) => (prev.length > 0 ? [] : prev));
       setActiveSnapMarkers((prev) => (prev.length > 0 ? [] : prev));
       setActivePolarGuide((prev) => (prev ? null : prev));
@@ -4094,7 +4365,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       const refY = grabbedPointRef.current
         ? snappedTop + grabbedPointRef.current.offsetFromOrigin.dy
         : (target.getCenterPoint?.().y ?? snappedTop);
-      setCadHud({ x: refX, y: refY, text: `Δ ${dist} px  ∠ ${deg}°` });
+      setCadHud({
+        x: refX,
+        y: refY,
+        text: `Δ ${dist} px  ∠ ${deg}°${polarGuide?.isOrtho ? '  ORTHO' : ''}`,
+      });
     }
 
     setHoverSnapMarker(null);
@@ -4105,8 +4380,16 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
 
   // AutoCAD OSNAP when resizing / dragging corner handles (object:scaling) using exact vector centerline
   const handleObjectScaling = useCallback((e: any) => {
+    if (isPanningRef.current) return;
+    if (
+      parametricStateRef.current?.showConstraints &&
+      (parametricStateRef.current.dimConstraints.length > 0 ||
+        parametricStateRef.current.geomConstraints.length > 0)
+    ) {
+      setParamOverlayTick((t) => (t + 1) % 10000);
+    }
     const currentSnap = snapConfigRef.current;
-    if (!currentSnap?.enabled || isPanningRef.current) return;
+    if (!currentSnap?.enabled) return;
 
     const target = e.target as fabric.FabricObject;
     const corner = e.transform?.corner as string | undefined;
@@ -4211,12 +4494,23 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    const handleObjectRotating = () => {
+      if (
+        parametricStateRef.current?.showConstraints &&
+        (parametricStateRef.current.dimConstraints.length > 0 ||
+          parametricStateRef.current.geomConstraints.length > 0)
+      ) {
+        setParamOverlayTick((t) => (t + 1) % 10000);
+      }
+    };
+
     canvas.on('mouse:down', handleMouseDown);
     canvas.on('mouse:move', handleMouseMove);
     canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDoubleClick);
     canvas.on('object:moving', handleObjectMoving);
     canvas.on('object:scaling', handleObjectScaling);
+    canvas.on('object:rotating', handleObjectRotating);
 
     const upperEl = canvas.upperCanvasEl;
 
@@ -4344,6 +4638,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       canvas.off('mouse:dblclick', handleDoubleClick);
       canvas.off('object:moving', handleObjectMoving);
       canvas.off('object:scaling', handleObjectScaling);
+      canvas.off('object:rotating', handleObjectRotating);
       upperEl?.removeEventListener('mousedown', handleCaptureMouseDown, { capture: true });
       upperEl?.removeEventListener('dblclick', handleDomDblClick);
       upperEl?.removeEventListener('contextmenu', handleContextMenu);
@@ -4791,6 +5086,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             hoverSnapMarker ||
             activePolarGuide ||
             bezierRubberBand ||
+            line2pPreview ||
             bezierPenPreview ||
             dimOverlay ||
             cropDraftRect ||
@@ -4899,7 +5195,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                 );
               })()}
               {/* AutoCAD Polar / Ortho Infinite Tracking Ray */}
-              {showDynamicGuides && activePolarGuide && (() => {
+              {(showDynamicGuides || activePolarGuide?.isOrtho) && activePolarGuide && (() => {
                 const ox = pan.x + activePolarGuide.origin.x * zoomLevel;
                 const oy = pan.y + activePolarGuide.origin.y * zoomLevel;
                 const rad = (activePolarGuide.angleDeg * Math.PI) / 180;
@@ -4914,10 +5210,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    stroke="#22c55e"
-                    strokeWidth="1.2"
-                    strokeDasharray="6 4"
-                    opacity="0.8"
+                    stroke={activePolarGuide.isOrtho ? '#06b6d4' : '#22c55e'}
+                    strokeWidth={activePolarGuide.isOrtho ? '1.35' : '1.2'}
+                    strokeDasharray={activePolarGuide.isOrtho ? '8 4' : '6 4'}
+                    opacity="0.88"
                   />
                 );
               })()}
@@ -5014,6 +5310,38 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                         strokeDasharray="4 3"
                       />
                     )}
+                  </g>
+                );
+              })()}
+
+              {/* 2-Point Line Live Click-Click Rubber-Band Preview */}
+              {line2pPreview && (() => {
+                const lx1 = pan.x + line2pPreview.x1 * zoomLevel;
+                const ly1 = pan.y + line2pPreview.y1 * zoomLevel;
+                const lx2 = pan.x + line2pPreview.x2 * zoomLevel;
+                const ly2 = pan.y + line2pPreview.y2 * zoomLevel;
+                return (
+                  <g>
+                    <line
+                      x1={lx1}
+                      y1={ly1}
+                      x2={lx2}
+                      y2={ly2}
+                      stroke={currentStroke || '#000000'}
+                      strokeWidth={Math.max(1.5, (properties.strokeWidth || 2) * zoomLevel)}
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1={lx1}
+                      y1={ly1}
+                      x2={lx2}
+                      y2={ly2}
+                      stroke="#06b6d4"
+                      strokeWidth="1.2"
+                      strokeDasharray="4 3"
+                    />
+                    <circle cx={lx1} cy={ly1} r={4} fill="#0078d7" stroke="#ffffff" strokeWidth="1.5" />
+                    <circle cx={lx2} cy={ly2} r={3.5} fill="#06b6d4" stroke="#ffffff" strokeWidth="1.2" />
                   </g>
                 );
               })()}
@@ -5414,7 +5742,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                 );
               })()}
 
-              {/* AutoCAD Dynamic Input Dimension / Polar / Eyedropper HUD near Cursor */}
+              {/* AutoCAD Dynamic Input Dimension / Polar / Ortho / Eyedropper HUD near Cursor */}
               {cadHud && (
                 <g transform={`translate(${pan.x + cadHud.x * zoomLevel + 14}, ${pan.y + cadHud.y * zoomLevel + 18})`}>
                   <rect
@@ -5425,7 +5753,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                     rx={3}
                     fill="#0f172a"
                     fillOpacity="0.92"
-                    stroke={activePolarGuide ? '#22c55e' : '#64748b'}
+                    stroke={activePolarGuide?.isOrtho ? '#06b6d4' : activePolarGuide ? '#22c55e' : '#64748b'}
                     strokeWidth="1"
                   />
                   {cadHud.swatches && (
@@ -5455,7 +5783,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                   <text
                     x={cadHud.swatches ? 37 : 7}
                     y={13.5}
-                    fill={activePolarGuide ? '#86efac' : '#e2e8f0'}
+                    fill={activePolarGuide?.isOrtho ? '#67e8f9' : activePolarGuide ? '#86efac' : '#e2e8f0'}
                     fontSize="10"
                     fontFamily="Consolas, Monaco, monospace"
                     fontWeight="600"
@@ -5597,6 +5925,225 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               </svg>
             );
           })()}
+
+          {/* Parametric & Constraints Overlay (DCON Dynamic Dimensions + GCON Constraint Badges) */}
+          {parametricState?.showConstraints &&
+            (parametricState.dimConstraints.length > 0 || parametricState.geomConstraints.length > 0) &&
+            (() => {
+              // Read paramOverlayTick so callouts stay synced during live transforms
+              void paramOverlayTick;
+              const { dimCallouts, geomBadges } = computeParametricOverlays(
+                fabricRef.current,
+                parametricState,
+                pageConfig.units
+              );
+              if (dimCallouts.length === 0 && geomBadges.length === 0) return null;
+
+              return (
+                <>
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible">
+                    {geomBadges.map((gb) => (
+                      <g key={`gcon-ln-${gb.id}`}>
+                        {gb.axisLine && (
+                          <line
+                            x1={pan.x + gb.axisLine.x1 * zoomLevel}
+                            y1={pan.y + gb.axisLine.y1 * zoomLevel}
+                            x2={pan.x + gb.axisLine.x2 * zoomLevel}
+                            y2={pan.y + gb.axisLine.y2 * zoomLevel}
+                            stroke="#a855f7"
+                            strokeWidth="1.2"
+                            strokeDasharray="5 3"
+                            opacity="0.8"
+                          />
+                        )}
+                        {gb.linkFrom && gb.linkTo && (
+                          <line
+                            x1={pan.x + gb.linkFrom.x * zoomLevel}
+                            y1={pan.y + gb.linkFrom.y * zoomLevel}
+                            x2={pan.x + gb.linkTo.x * zoomLevel}
+                            y2={pan.y + gb.linkTo.y * zoomLevel}
+                            stroke="#10b981"
+                            strokeWidth="1"
+                            strokeDasharray="3 3"
+                            opacity="0.55"
+                          />
+                        )}
+                      </g>
+                    ))}
+                    {dimCallouts.map((dc) => {
+                      const sx1 = pan.x + dc.x1 * zoomLevel;
+                      const sy1 = pan.y + dc.y1 * zoomLevel;
+                      const sx2 = pan.x + dc.x2 * zoomLevel;
+                      const sy2 = pan.y + dc.y2 * zoomLevel;
+                      const ex1 = pan.x + dc.extX1 * zoomLevel;
+                      const ey1 = pan.y + dc.extY1 * zoomLevel;
+                      const ex2 = pan.x + dc.extX2 * zoomLevel;
+                      const ey2 = pan.y + dc.extY2 * zoomLevel;
+                      const strokeCol = dc.error ? '#ef4444' : '#0284c7';
+                      return (
+                        <g key={`dcon-svg-${dc.id}`}>
+                          <line
+                            x1={ex1}
+                            y1={ey1}
+                            x2={sx1}
+                            y2={sy1}
+                            stroke={strokeCol}
+                            strokeWidth="1"
+                            strokeDasharray="2 2"
+                            opacity="0.65"
+                          />
+                          <line
+                            x1={ex2}
+                            y1={ey2}
+                            x2={sx2}
+                            y2={sy2}
+                            stroke={strokeCol}
+                            strokeWidth="1"
+                            strokeDasharray="2 2"
+                            opacity="0.65"
+                          />
+                          <line x1={sx1} y1={sy1} x2={sx2} y2={sy2} stroke={strokeCol} strokeWidth="1.4" />
+                          <circle cx={sx1} cy={sy1} r={2.5} fill={strokeCol} />
+                          <circle cx={sx2} cy={sy2} r={2.5} fill={strokeCol} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Interactive DCON Pill Badges (Click to edit dimension/formula directly!) */}
+                  {dimCallouts.map((dc) => {
+                    const mx = pan.x + dc.midX * zoomLevel;
+                    const my = pan.y + dc.midY * zoomLevel;
+                    return (
+                      <div
+                        key={`dcon-pill-${dc.id}`}
+                        style={{
+                          left: `${mx}px`,
+                          top: `${my}px`,
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                        className="absolute z-25 pointer-events-auto flex items-center gap-1"
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDim({
+                              id: dc.id,
+                              name: dc.name,
+                              expr: dc.expression,
+                              x: mx,
+                              y: my,
+                            });
+                          }}
+                          title={`Click to edit ${dc.name} (supports values & formulas like Length / 2)`}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold shadow-sm border flex items-center gap-1 cursor-pointer transition ${
+                            dc.error
+                              ? 'bg-red-600 text-white border-red-400'
+                              : 'bg-sky-950/90 hover:bg-sky-800 text-sky-100 border-sky-400/70'
+                          }`}
+                        >
+                          <span className="text-[9px] opacity-80">🔒</span>
+                          <span>{dc.label}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {/* GCON Constraint Badges */}
+                  {geomBadges.map((gb) => {
+                    const bx = pan.x + gb.x * zoomLevel;
+                    const by = pan.y + gb.y * zoomLevel;
+                    return (
+                      <div
+                        key={`gcon-badge-${gb.id}`}
+                        style={{
+                          left: `${bx}px`,
+                          top: `${by}px`,
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                        className="absolute z-25 pointer-events-auto"
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenParametersManager?.();
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onDeleteGeomConstraint?.(gb.id);
+                          }}
+                          title={`${gb.label} Constraint (Click to open Parameters Manager, Right-click to remove)`}
+                          className="px-1 py-0.5 rounded bg-emerald-950/90 hover:bg-emerald-800 text-emerald-200 border border-emerald-400/70 text-[10px] font-mono font-bold shadow-sm cursor-pointer"
+                        >
+                          {gb.glyph}
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {/* Inline Dynamic Dimension Value/Formula Editor */}
+                  {editingDim && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        onEditDimConstraint?.(editingDim.id, editingDim.expr);
+                        setEditingDim(null);
+                      }}
+                      style={{
+                        left: `${editingDim.x}px`,
+                        top: `${editingDim.y}px`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute z-35 pointer-events-auto flex items-center gap-1 bg-slate-900 border border-cyan-400 rounded px-2 py-1 shadow-xl text-white"
+                    >
+                      <span className="text-[10px] font-mono text-cyan-300 font-semibold">
+                        {editingDim.name} =
+                      </span>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingDim.expr}
+                        onChange={(e) => setEditingDim({ ...editingDim, expr: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setEditingDim(null);
+                        }}
+                        className="w-28 px-1.5 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-white outline-none focus:border-cyan-400"
+                      />
+                      <button
+                        type="submit"
+                        className="px-1.5 py-0.5 bg-cyan-600 hover:bg-cyan-500 rounded text-[10px] font-semibold"
+                      >
+                        Apply
+                      </button>
+                      {onDeleteDimConstraint && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteDimConstraint(editingDim.id);
+                            setEditingDim(null);
+                          }}
+                          title="Remove constraint"
+                          className="px-1 py-0.5 bg-red-600/80 hover:bg-red-500 rounded text-[10px]"
+                        >
+                          ✕
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setEditingDim(null)}
+                        className="px-1 py-0.5 text-slate-400 hover:text-white text-[10px]"
+                      >
+                        Esc
+                      </button>
+                    </form>
+                  )}
+                </>
+              );
+            })()}
 
           {/* Collaborative Remote Cursors Overlay */}
           {collaborators

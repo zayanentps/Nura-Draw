@@ -123,6 +123,7 @@ import {
   Timer,
   ZoomIn,
   ZoomOut,
+  Sliders,
 } from 'lucide-react';
 import { formatDurationHMS, TimerStatus } from './ProjectTimerWindow';
 import {
@@ -140,6 +141,9 @@ import {
   CropActionType,
   ZoomPresetMode,
   SymmetryConfig,
+  ParametricState,
+  GeometricConstraintType,
+  DimConstraintKind,
 } from '../types';
 import {
   IconDimension,
@@ -169,6 +173,12 @@ import {
 } from './CorelToolIcons';
 import { ALL_UNITS, PAGE_PRESETS, UNITS_DATA, pxToUnit, unitToPx } from '../utils/units';
 import { POPULAR_FONTS, FONT_SIZES } from '../utils/fonts';
+import {
+  DEFAULT_METALLIC_CONFIG,
+  METALLIC_PRESETS,
+  METALLIC_PRESET_ORDER,
+  getMetallicPreviewCss,
+} from '../utils/metallicEffect';
 
 interface CorelTopPanelProps {
   documentName: string;
@@ -365,6 +375,16 @@ interface CorelTopPanelProps {
   onAutofitPage?: (marginPx?: number) => void;
   currentFill?: string;
   currentStroke?: string;
+  // Parametric & Constraints Tab
+  parametricState?: ParametricState;
+  onOpenParametersManager?: () => void;
+  onAddDimConstraint?: (kind: DimConstraintKind) => void;
+  onAddGeomConstraint?: (type: GeometricConstraintType) => void;
+  onAutoConstrain?: () => void;
+  onToggleShowConstraints?: () => void;
+  onSolveConstraints?: () => void;
+  onClearSelectedConstraints?: () => void;
+  onClearAllConstraints?: () => void;
 }
 
 const STROKE_WIDTHS = [
@@ -442,6 +462,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
     snapToGrid: false,
     snapToObjects: true,
     snapToPage: true,
+    orthoMode: false,
     gridSize: 20,
     snapThreshold: 14,
   },
@@ -570,6 +591,15 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onAutofitPage,
   currentFill = '#00a651',
   currentStroke = '#000000',
+  parametricState,
+  onOpenParametersManager,
+  onAddDimConstraint,
+  onAddGeomConstraint,
+  onAutoConstrain,
+  onToggleShowConstraints,
+  onSolveConstraints,
+  onClearSelectedConstraints,
+  onClearAllConstraints,
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeFileSubmenu, setActiveFileSubmenu] = useState<string | null>(null);
@@ -577,6 +607,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   const [activeViewSubmenu, setActiveViewSubmenu] = useState<string | null>(null);
   const [activeLayoutSubmenu, setActiveLayoutSubmenu] = useState<string | null>(null);
   const [activeWindowSubmenu, setActiveWindowSubmenu] = useState<string | null>(null);
+  const [activeParametricSubmenu, setActiveParametricSubmenu] = useState<string | null>(null);
   const [activeTextSubmenu, setActiveTextSubmenu] = useState<string | null>(null);
   const [activeEffectsSubmenu, setActiveEffectsSubmenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement | null>(null);
@@ -684,6 +715,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
       setActiveViewSubmenu(null);
       setActiveLayoutSubmenu(null);
       setActiveWindowSubmenu(null);
+      setActiveParametricSubmenu(null);
       setActiveTextSubmenu(null);
       setActiveEffectsSubmenu(null);
       return;
@@ -696,6 +728,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
         setActiveViewSubmenu(null);
         setActiveLayoutSubmenu(null);
         setActiveWindowSubmenu(null);
+        setActiveParametricSubmenu(null);
         setActiveTextSubmenu(null);
         setActiveEffectsSubmenu(null);
       }
@@ -845,6 +878,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
     { label: 'Effects', accel: 'E', key: 'effects' },
     { label: 'Tools', accel: 'o', key: 'tools' },
     { label: 'Window', accel: 'W', key: 'window' },
+    { label: 'Parametric & Constraints', accel: 'P', key: 'parametric' },
     { label: 'Help', accel: 'H', key: 'help' },
   ];
 
@@ -2457,6 +2491,22 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                           </span>
                           <span>Page</span>
                         </button>
+                        <div className={`h-px my-1 ${isDark ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+                        <button
+                          onClick={() => {
+                            onUpdateSnapConfig({ orthoMode: !snapConfig.orthoMode });
+                            setActiveMenu(null);
+                          }}
+                          className="w-full text-left px-2.5 py-1 hover:bg-[#0078d7] hover:text-white flex items-center justify-between gap-2"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-3.5 h-3.5 flex items-center justify-center">
+                              {snapConfig.orthoMode && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                            </span>
+                            <span>Ortho Mode (90°)</span>
+                          </span>
+                          <span className="text-[10px] opacity-70">Shift+F8</span>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -3317,7 +3367,107 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
 
                     <div className={`h-px my-1 ml-7 mr-1 ${isDark ? 'bg-zinc-700' : 'bg-[#d4d6da]'}`} />
 
-                    {/* 17. Change Case... */}
+                    {/* 17. Metallic Text ▶ (Silver, Gold, Copper, Cobalt, Bismuth + Adjustments) */}
+                    <div
+                      className="relative"
+                      onMouseEnter={() => setActiveTextSubmenu('metallic_text')}
+                    >
+                      <button
+                        onClick={() => {
+                          onTextAction?.('metallic_adjust');
+                          setActiveMenu(null);
+                          setActiveTextSubmenu(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1 flex items-center justify-between ${
+                          activeTextSubmenu === 'metallic_text'
+                            ? isDark
+                              ? 'bg-zinc-700 text-white'
+                              : 'bg-[#c9ced4] text-zinc-900'
+                            : isDark
+                            ? 'hover:bg-zinc-700'
+                            : 'hover:bg-[#c9ced4]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Sparkles className="w-4 h-4 shrink-0 text-amber-500" />
+                          <span>Metallic Text &amp; Effect</span>
+                        </span>
+                        <span className="text-[10px] text-zinc-600 dark:text-zinc-400">▶</span>
+                      </button>
+
+                      {activeTextSubmenu === 'metallic_text' && (
+                        <div
+                          className={`absolute left-full top-0 ml-0.5 w-60 rounded-xs shadow-xl py-1 z-50 border ${
+                            isDark
+                              ? 'bg-[#4e5157] border-[#6a6e77] text-zinc-100'
+                              : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
+                          }`}
+                        >
+                          {METALLIC_PRESET_ORDER.map((pid, idx) => {
+                            const preset = METALLIC_PRESETS[pid];
+                            const swatch = getMetallicPreviewCss({
+                              ...DEFAULT_METALLIC_CONFIG,
+                              preset: pid,
+                            });
+                            return (
+                              <button
+                                key={pid}
+                                onClick={() => {
+                                  onTextAction?.('metallic_preset', pid);
+                                  setActiveMenu(null);
+                                  setActiveTextSubmenu(null);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between gap-2"
+                              >
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className="w-4 h-4 rounded-xs border border-black/30 shrink-0 shadow-inner"
+                                    style={{ background: swatch }}
+                                  />
+                                  <span className="font-medium truncate">
+                                    {idx + 1}. {preset.label}
+                                  </span>
+                                </span>
+                                <span className="text-[10px] opacity-65 truncate">
+                                  {preset.id === 'bismuth'
+                                    ? 'Prism'
+                                    : preset.id === 'cobalt'
+                                    ? 'Anodized'
+                                    : 'Metal'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                          <div className={`h-px my-1 ${isDark ? 'bg-zinc-600' : 'bg-[#d4d6da]'}`} />
+                          <button
+                            onClick={() => {
+                              onTextAction?.('metallic_adjust');
+                              setActiveMenu(null);
+                              setActiveTextSubmenu(null);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center gap-2 font-medium"
+                          >
+                            <Sliders className="w-3.5 h-3.5 shrink-0" />
+                            <span>Adjustments (Gloss, Size...)</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              onTextAction?.('metallic_remove');
+                              setActiveMenu(null);
+                              setActiveTextSubmenu(null);
+                            }}
+                            className="w-full text-left px-2.5 py-1 hover:bg-red-600 hover:text-white flex items-center gap-2 opacity-85"
+                          >
+                            <X className="w-3.5 h-3.5 shrink-0" />
+                            <span>Remove Metallic Effect</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`h-px my-1 ml-7 mr-1 ${isDark ? 'bg-zinc-700' : 'bg-[#d4d6da]'}`} />
+
+                    {/* 18. Change Case... */}
                     <button
                       disabled={!isTextObjSelected}
                       onMouseEnter={() => setActiveTextSubmenu(null)}
@@ -4660,6 +4810,287 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 </div>
               )}
 
+              {/* Parametric & Constraints Dropdown Menu (After Window tab) */}
+              {activeMenu === 'parametric' && item.key === 'parametric' && (
+                <div
+                  className={`absolute left-0 top-full mt-0.5 w-72 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
+                    isDark
+                      ? 'bg-[#4e5157] border-[#6a6e77] text-zinc-100'
+                      : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
+                  }`}
+                  onMouseLeave={() => setActiveParametricSubmenu(null)}
+                >
+                  {/* 1. PARAMETERS (PAR) */}
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onOpenParametersManager?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                      isDark ? 'hover:bg-[#0078d7] hover:text-white' : 'hover:bg-[#0078d7] hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-medium">
+                      <Sliders className="w-3.5 h-3.5 text-cyan-500" />
+                      <span>Parameters Manager...</span>
+                    </span>
+                    <span className="font-mono text-[10px] opacity-75">PAR</span>
+                  </button>
+
+                  <div className={`h-px my-1 mx-2 ${isDark ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+
+                  {/* 2. GEOMCONSTRAINT (GCON) Submenu */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setActiveParametricSubmenu('gcon')}
+                  >
+                    <button
+                      onClick={() =>
+                        setActiveParametricSubmenu(activeParametricSubmenu === 'gcon' ? null : 'gcon')
+                      }
+                      className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                        activeParametricSubmenu === 'gcon'
+                          ? 'bg-[#0078d7] text-white'
+                          : isDark
+                          ? 'hover:bg-zinc-700'
+                          : 'hover:bg-[#c9ced4]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 font-medium">
+                        <span className="w-3.5 text-center font-mono text-emerald-500 font-bold">⊥</span>
+                        <span>Geometric Constraints (GCON)</span>
+                      </span>
+                      <span className="text-[10px]">▶</span>
+                    </button>
+
+                    {activeParametricSubmenu === 'gcon' && (
+                      <div
+                        className={`absolute left-full top-0 ml-0.5 w-60 rounded-xs shadow-2xl py-1 z-50 border ${
+                          isDark
+                            ? 'bg-[#4e5157] border-[#6a6e77] text-zinc-100'
+                            : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
+                        }`}
+                      >
+                        {(
+                          [
+                            { type: 'coincident', label: 'Coincident', glyph: '⊡', hint: 'Snap/link points' },
+                            { type: 'parallel', label: 'Parallel', glyph: '//', hint: 'Match angles' },
+                            { type: 'perpendicular', label: 'Perpendicular', glyph: '⊥', hint: '90° angle' },
+                            { type: 'tangent', label: 'Tangent', glyph: '⌖', hint: 'Touch curve/circle' },
+                            { type: 'concentric', label: 'Concentric', glyph: '◎', hint: 'Share center' },
+                            { type: 'equal', label: 'Equal Size / Length', glyph: '=', hint: 'Equal W/H/R/Len' },
+                            { type: 'symmetric', label: 'Symmetric', glyph: '◫', hint: 'Mirror pair' },
+                            { type: 'horizontal', label: 'Horizontal', glyph: '—', hint: 'Align 0°' },
+                            { type: 'vertical', label: 'Vertical', glyph: '|', hint: 'Align 90°' },
+                            { type: 'fix', label: 'Fix Position', glyph: '🔒', hint: 'Lock anchor' },
+                          ] as { type: GeometricConstraintType; label: string; glyph: string; hint: string }[]
+                        ).map((gc) => (
+                          <button
+                            key={gc.type}
+                            onClick={() => {
+                              onAddGeomConstraint?.(gc.type);
+                              setActiveMenu(null);
+                              setActiveParametricSubmenu(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between gap-2"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="w-4 text-center font-mono font-bold text-emerald-500">{gc.glyph}</span>
+                              <span>{gc.label}</span>
+                            </span>
+                            <span className="text-[10px] opacity-70">{gc.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. DIMCONSTRAINT (DCON) Submenu */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setActiveParametricSubmenu('dcon')}
+                  >
+                    <button
+                      onClick={() =>
+                        setActiveParametricSubmenu(activeParametricSubmenu === 'dcon' ? null : 'dcon')
+                      }
+                      className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                        activeParametricSubmenu === 'dcon'
+                          ? 'bg-[#0078d7] text-white'
+                          : isDark
+                          ? 'hover:bg-zinc-700'
+                          : 'hover:bg-[#c9ced4]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 font-medium">
+                        <span className="w-3.5 text-center font-mono text-blue-500 font-bold">↔</span>
+                        <span>Dynamic Dimensions (DCON)</span>
+                      </span>
+                      <span className="text-[10px]">▶</span>
+                    </button>
+
+                    {activeParametricSubmenu === 'dcon' && (
+                      <div
+                        className={`absolute left-full top-0 ml-0.5 w-64 rounded-xs shadow-2xl py-1 z-50 border ${
+                          isDark
+                            ? 'bg-[#4e5157] border-[#6a6e77] text-zinc-100'
+                            : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
+                        }`}
+                      >
+                        {(
+                          [
+                            { kind: 'horizontal', label: 'Horizontal Width / Dist X', glyph: '↔' },
+                            { kind: 'vertical', label: 'Vertical Height / Dist Y', glyph: '↕' },
+                            { kind: 'aligned', label: 'Aligned / Length / Dist', glyph: '⤢' },
+                            { kind: 'radius', label: 'Radius (R)', glyph: 'R' },
+                            { kind: 'diameter', label: 'Diameter (Ø)', glyph: 'Ø' },
+                            { kind: 'angular', label: 'Angular (∠)', glyph: '∠' },
+                          ] as { kind: DimConstraintKind; label: string; glyph: string }[]
+                        ).map((dc) => (
+                          <button
+                            key={dc.kind}
+                            onClick={() => {
+                              onAddDimConstraint?.(dc.kind);
+                              setActiveMenu(null);
+                              setActiveParametricSubmenu(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between gap-2"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="w-4 text-center font-mono font-bold text-blue-500">{dc.glyph}</span>
+                              <span>{dc.label}</span>
+                            </span>
+                            <span className="font-mono text-[10px] opacity-70">DCON</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. AUTOCONSTRAIN */}
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onAutoConstrain?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                      isDark ? 'hover:bg-[#0078d7] hover:text-white' : 'hover:bg-[#0078d7] hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-medium">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>AutoConstrain Selected Objects</span>
+                    </span>
+                    <span className="font-mono text-[10px] opacity-75">AUTO</span>
+                  </button>
+
+                  <div className={`h-px my-1 mx-2 ${isDark ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+
+                  {/* Quick GCON Shortcuts directly in menu for 1-click access */}
+                  <div className={`px-3 py-0.5 text-[10px] uppercase tracking-wider font-semibold ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                    Quick Apply (Selected Objects)
+                  </div>
+                  <div className="px-2 py-1 grid grid-cols-4 gap-1">
+                    {(
+                      [
+                        { type: 'parallel', glyph: '//', title: 'Parallel (GCON)' },
+                        { type: 'perpendicular', glyph: '⊥', title: 'Perpendicular (GCON)' },
+                        { type: 'tangent', glyph: '⌖', title: 'Tangent (GCON)' },
+                        { type: 'concentric', glyph: '◎', title: 'Concentric (GCON)' },
+                        { type: 'coincident', glyph: '⊡', title: 'Coincident (GCON)' },
+                        { type: 'equal', glyph: '=', title: 'Equal (GCON)' },
+                        { type: 'symmetric', glyph: '◫', title: 'Symmetric (GCON)' },
+                        { type: 'fix', glyph: '🔒', title: 'Fix Position' },
+                      ] as { type: GeometricConstraintType; glyph: string; title: string }[]
+                    ).map((q) => (
+                      <button
+                        key={q.type}
+                        onClick={() => {
+                          onAddGeomConstraint?.(q.type);
+                          setActiveMenu(null);
+                        }}
+                        title={q.title}
+                        className={`py-1 rounded-xs border text-center font-mono text-[11px] font-bold transition ${
+                          isDark
+                            ? 'bg-[#3d4047] border-[#5b606b] hover:bg-[#0078d7] hover:text-white'
+                            : 'bg-white border-[#c4c8cf] hover:bg-[#0078d7] hover:text-white'
+                        }`}
+                      >
+                        {q.glyph}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className={`h-px my-1 mx-2 ${isDark ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+
+                  {/* Visibility & Management */}
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onToggleShowConstraints?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                      isDark ? 'hover:bg-zinc-700' : 'hover:bg-[#c9ced4]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 flex items-center justify-center">
+                        {(parametricState?.showConstraints ?? true) && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                      </span>
+                      <span>Show Constraint Badges &amp; Dims</span>
+                    </span>
+                    <span className="text-[10px] font-mono opacity-70">
+                      {(parametricState?.dimConstraints.length || 0) + (parametricState?.geomConstraints.length || 0)}
+                    </span>
+                  </button>
+
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onSolveConstraints?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
+                      isDark ? 'hover:bg-zinc-700' : 'hover:bg-[#c9ced4]'
+                    }`}
+                  >
+                    <span className="w-3.5 h-3.5" />
+                    <span>Re-Solve All Constraints &amp; Formulas</span>
+                  </button>
+
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onClearSelectedConstraints?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
+                      isDark ? 'hover:bg-zinc-700' : 'hover:bg-[#c9ced4]'
+                    }`}
+                  >
+                    <span className="w-3.5 h-3.5" />
+                    <span>Remove Constraints on Selection</span>
+                  </button>
+
+                  <button
+                    onMouseEnter={() => setActiveParametricSubmenu(null)}
+                    onClick={() => {
+                      onClearAllConstraints?.();
+                      setActiveMenu(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-red-500 ${
+                      isDark ? 'hover:bg-zinc-700' : 'hover:bg-[#c9ced4]'
+                    }`}
+                  >
+                    <span className="w-3.5 h-3.5" />
+                    <span>Delete All Constraints</span>
+                  </button>
+                </div>
+              )}
+
               {/* Help Dropdown Menu */}
               {activeMenu === 'help' && item.key === 'help' && (
                 <div
@@ -4960,6 +5391,32 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
             <IconSnapToggle className="w-4 h-4" active={snapConfig.enabled} />
           </button>
 
+          {/* AutoCAD-style Ortho Mode Toggle */}
+          <button
+            onClick={() => onUpdateSnapConfig({ orthoMode: !snapConfig.orthoMode })}
+            aria-pressed={!!snapConfig.orthoMode}
+            title={
+              snapConfig.orthoMode
+                ? 'Ortho Mode ON (Shift+F8) — Constrained to 0° / 90° (Hold Shift to temporarily unlock)'
+                : 'Ortho Mode OFF (Shift+F8) — Click to restrict drawing & moves to 0° / 90° like AutoCAD'
+            }
+            className={`ml-0.5 px-1.5 py-0.5 rounded-xs border transition-colors flex items-center gap-1 text-[10px] font-mono font-semibold ${
+              snapConfig.orthoMode
+                ? isDark
+                  ? 'bg-cyan-900/50 border-cyan-500/70 text-cyan-200'
+                  : 'bg-[#d0e8f9] border-[#5b9bd5] text-[#004e98]'
+                : isDark
+                ? 'hover:bg-zinc-700 border-transparent text-zinc-400'
+                : 'hover:bg-[#dbe0e6] border-transparent text-zinc-600'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 2v11h11" strokeLinecap="square" />
+              <path d="M3 9h4v4" strokeWidth="1.2" opacity="0.85" />
+            </svg>
+            <span>ORTHO</span>
+          </button>
+
           {/* Snap To Dropdown trigger */}
           <div className="relative">
             <button
@@ -5046,6 +5503,22 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                       </span>
                       <span><u>P</u>age</span>
                     </div>
+                  </button>
+
+                  {/* AutoCAD Ortho Mode */}
+                  <button
+                    onClick={() => onUpdateSnapConfig({ orthoMode: !snapConfig.orthoMode })}
+                    className={`w-full text-left px-3 py-1.5 flex justify-between items-center ${
+                      isDark ? 'hover:bg-blue-600 hover:text-white' : 'hover:bg-[#0078d7] hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="w-4 flex items-center justify-center">
+                        {snapConfig.orthoMode && <Check className="w-3.5 h-3.5 text-cyan-500 group-hover:text-white" />}
+                      </span>
+                      <span><u>O</u>rtho Mode (90°)</span>
+                    </div>
+                    <span className="font-mono text-[10px] opacity-70">Shift+F8</span>
                   </button>
 
                   <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
@@ -5754,7 +6227,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                   {activeTool === 'freehand'
                     ? 'Click and drag to draw a freehand stroke'
                     : activeTool === 'line2p'
-                    ? 'Drag P1 → P2 to draw straight line (Shift for 15°/45°/90°)'
+                    ? 'Click start point P1, move & click end point P2 (Esc to cancel)'
                     : activeTool === 'bezier' || activeTool === 'pen'
                     ? 'Click for corner or drag for smooth handle; Double-click / Enter to finish'
                     : activeTool === 'b_spline'

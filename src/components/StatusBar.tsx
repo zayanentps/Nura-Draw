@@ -15,6 +15,8 @@ interface StatusBarProps {
   theme?: ThemeMode;
   currentFill?: string;
   currentStroke?: string;
+  orthoMode?: boolean;
+  onToggleOrtho?: () => void;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
@@ -30,6 +32,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   theme = 'light',
   currentFill = 'transparent',
   currentStroke = '#000000',
+  orthoMode = false,
+  onToggleOrtho,
 }) => {
   const isDark = theme === 'dark';
 
@@ -92,6 +96,31 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             Y: <strong className={isDark ? 'text-white' : 'text-zinc-900'}>{Math.round(cursorPos.y)}</strong> px
           </span>
         </div>
+
+        {/* AutoCAD-style ORTHO Mode Toggle */}
+        {onToggleOrtho && (
+          <button
+            type="button"
+            onClick={onToggleOrtho}
+            aria-pressed={orthoMode}
+            title="Ortho Mode (Shift+F8) — Restrict cursor & moves to 0° / 90° like AutoCAD (Hold Shift to temporarily override)"
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-xs border text-[10px] font-mono font-semibold transition-colors cursor-pointer ${
+              orthoMode
+                ? isDark
+                  ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-xs'
+                  : 'bg-[#0078d7] border-[#005a9e] text-white shadow-xs'
+                : isDark
+                ? 'border-[#646870] text-zinc-400 hover:text-zinc-200 hover:bg-[#5c6068]'
+                : 'border-[#cfd1d6] text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
+            }`}
+          >
+            <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 2v11h11" strokeLinecap="square" />
+              <path d="M3 9h4v4" strokeWidth="1.2" opacity="0.85" />
+            </svg>
+            <span>ORTHO</span>
+          </button>
+        )}
 
         {/* Zoom Controls (Logarithmic range 1% to 409,600% max) */}
         <div className={`flex items-center gap-1.5 border-l pl-3 ${isDark ? 'border-[#646870]' : 'border-[#cfd1d6]'}`}>

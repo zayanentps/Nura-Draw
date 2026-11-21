@@ -172,6 +172,7 @@ export type ViewQualityMode = 'wireframe' | 'normal' | 'enhanced' | 'pixels';
 
 export interface SnapConfig {
   enabled: boolean;
+  orthoMode?: boolean; // AutoCAD F8 Ortho constraint (strict 0° / 90° / 180° / 270°)
   snapToGrid: boolean;
   snapToBaselineGrid?: boolean;
   snapToGuidelines?: boolean;
@@ -224,4 +225,78 @@ export interface CurveEditState {
   isClosed: boolean;
   nodeCount: number;
   addNodeMode?: boolean;
+}
+
+export type GeometricConstraintType =
+  | 'parallel'
+  | 'perpendicular'
+  | 'tangent'
+  | 'concentric'
+  | 'coincident'
+  | 'equal'
+  | 'symmetric'
+  | 'horizontal'
+  | 'vertical'
+  | 'fix';
+
+export interface GeometricConstraint {
+  id: string;
+  type: GeometricConstraintType;
+  objectIds: string[];
+  axisMode?: 'vertical' | 'horizontal' | 'object';
+  axisPos?: number;
+  fixedLeft?: number;
+  fixedTop?: number;
+  enabled: boolean;
+}
+
+export type DimConstraintKind =
+  | 'horizontal'
+  | 'vertical'
+  | 'aligned'
+  | 'radius'
+  | 'diameter'
+  | 'angular';
+
+export interface DimensionalConstraint {
+  id: string;
+  name: string;
+  kind: DimConstraintKind;
+  objectIds: string[];
+  expression: string;
+  value: number;
+  error?: string;
+  offset?: number;
+}
+
+export interface ParametricVariable {
+  id: string;
+  name: string;
+  expression: string;
+  value: number;
+  unit?: UnitType | 'deg' | 'scalar';
+  comment?: string;
+  error?: string;
+}
+
+export interface ParametricState {
+  variables: ParametricVariable[];
+  dimConstraints: DimensionalConstraint[];
+  geomConstraints: GeometricConstraint[];
+  showConstraints: boolean;
+}
+
+export type MetallicPresetId = 'silver' | 'gold' | 'copper' | 'cobalt' | 'bismuth';
+
+export interface MetallicEffectConfig {
+  preset: MetallicPresetId;
+  intensity: number; // 0..100
+  glossiness: number; // 0..100
+  gradientSize: number; // 25..250 (%)
+  angle: number; // 0..360 deg
+  reflectionBands: number; // 1..4
+  bevelStroke: boolean;
+  bevelWidth: number; // 0.5..8 px
+  shadowDepth: number; // 0..100 (%)
+  gradientType: 'linear' | 'radial';
 }
