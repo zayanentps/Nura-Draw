@@ -87,7 +87,7 @@ import {
   IconSymmetryFinish,
   IconSymmetryRemove,
   IconSymmetryBreak,
-} from './CorelTopPanelIcons';
+} from './NuraTopPanelIcons';
 import {
   Undo2,
   Redo2,
@@ -137,6 +137,7 @@ import {
   CurveEditState,
   ViewQualityMode,
   DimensionConfig,
+  DimensionData,
   CropToolsConfig,
   CropActionType,
   ZoomPresetMode,
@@ -144,6 +145,7 @@ import {
   ParametricState,
   GeometricConstraintType,
   DimConstraintKind,
+  SmartFillConfig,
 } from '../types';
 import {
   IconDimension,
@@ -170,7 +172,7 @@ import {
   IconVirtualSegmentDelete,
   IconEraser,
   IconEyedropper,
-} from './CorelToolIcons';
+} from './NuraToolIcons';
 import { ALL_UNITS, PAGE_PRESETS, UNITS_DATA, pxToUnit, unitToPx } from '../utils/units';
 import { POPULAR_FONTS, FONT_SIZES } from '../utils/fonts';
 import {
@@ -180,7 +182,7 @@ import {
   getMetallicPreviewCss,
 } from '../utils/metallicEffect';
 
-interface CorelTopPanelProps {
+interface NuraTopPanelProps {
   documentName: string;
   onDocumentNameChange: (name: string) => void;
   canUndo: boolean;
@@ -385,6 +387,9 @@ interface CorelTopPanelProps {
   onSolveConstraints?: () => void;
   onClearSelectedConstraints?: () => void;
   onClearAllConstraints?: () => void;
+  // Smart Fill Tool Settings
+  smartFillConfig?: SmartFillConfig;
+  onUpdateSmartFillConfig?: (cfg: Partial<SmartFillConfig>) => void;
 }
 
 const STROKE_WIDTHS = [
@@ -402,7 +407,7 @@ const STROKE_WIDTHS = [
   { label: '12.0 pt', value: 12 },
 ];
 
-export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
+export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
   documentName,
   onDocumentNameChange,
   canUndo,
@@ -600,6 +605,14 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   onSolveConstraints,
   onClearSelectedConstraints,
   onClearAllConstraints,
+  smartFillConfig = {
+    useFillColor: true,
+    fillColor: '#00a651',
+    outlineMode: 'none',
+    outlineWidth: 0,
+    outlineColor: '#000000',
+  },
+  onUpdateSmartFillConfig,
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeFileSubmenu, setActiveFileSubmenu] = useState<string | null>(null);
@@ -750,7 +763,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   };
   const [showCollabModal, setShowCollabModal] = useState(false);
   const isDark = theme === 'dark';
-  const [selectedAnchor, setSelectedAnchor] = useState<number>(0); // 0-8, 0 is Top-Left (CorelDRAW standard)
+  const [selectedAnchor, setSelectedAnchor] = useState<number>(0); // 0-8, 0 is Top-Left (NuraDraw standard)
   const [cornerStyle, setCornerStyle] = useState<'round' | 'scallop' | 'chamfer'>('round');
   const [lockRatio, setLockRatio] = useState<boolean>(false);
   const [lockCorners, setLockCorners] = useState<boolean>(true);
@@ -842,10 +855,13 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
   };
 
   const isSelected = !!selectedObject;
+  const isDimensionSelected = !!(selectedObject && (selectedObject as any).isDimension);
   const isDimensionTool = ['dimension', 'hv_dimension', 'angular_dimension', 'segment_dimension', 'callout'].includes(activeTool);
   const isEffectTool = ['shadow', 'contour', 'blend', 'distort', 'envelope', 'extrude', 'block_shadow'].includes(activeTool);
   const isFreehandCurveTool = ['freehand', 'line2p', 'bezier', 'pen', 'b_spline', 'polyline', 'curve_3p'].includes(activeTool);
   const isCropTool = ['crop', 'knife', 'virtual_segment_delete', 'eraser'].includes(activeTool);
+  const isSmartFillTool = activeTool === 'smart_fill';
+  const isTransparencyTool = activeTool === 'transparency';
   const isEyedropperTool = activeTool === 'eyedropper';
   const isZoomTool = activeTool === 'zoom' || activeTool === 'pan';
   const isText = (selectedObject && (selectedObject.type === 'i-text' || selectedObject.type === 'text')) || (activeTool === 'text');
@@ -915,7 +931,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
       </div>
 
       {/* =========================================================================
-          ROW 1: CorelDRAW Classic Menu Bar
+          ROW 1: NuraDraw Classic Menu Bar
           ========================================================================= */}
       <div className={`h-6 border-b px-2 flex items-center justify-between text-xs ${isDark ? 'bg-[#484b51] border-[#60646c]' : 'bg-[#ebecee] border-[#d8dadd]'}`}>
         <div ref={menuBarRef} className="flex items-center space-x-1">
@@ -942,7 +958,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 })()}
               </button>
 
-              {/* File Dropdown Menu (Exact CorelDRAW File Menu Layout) */}
+              {/* File Dropdown Menu (Exact NuraDraw File Menu Layout) */}
               {activeMenu === 'file' && item.key === 'file' && (
                 <div
                   className={`absolute left-0 top-full mt-0.5 w-64 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
@@ -1546,7 +1562,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 </div>
               )}
 
-              {/* Edit Dropdown Menu (Exact CorelDRAW Edit Menu Layout matching edit_tab_c6f39bd0.jpg) */}
+              {/* Edit Dropdown Menu (Exact NuraDraw Edit Menu Layout matching edit_tab_c6f39bd0.jpg) */}
               {activeMenu === 'edit' && item.key === 'edit' && (
                 <div
                   className={`absolute left-0 top-full mt-0.5 w-64 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
@@ -1932,7 +1948,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 </div>
               )}
 
-              {/* View Dropdown Menu (Exact CorelDRAW View Menu Layout matching view tab screenshot) */}
+              {/* View Dropdown Menu (Exact NuraDraw View Menu Layout matching view tab screenshot) */}
               {activeMenu === 'view' && item.key === 'view' && (
                 <div
                   className={`absolute left-0 top-full mt-0.5 w-64 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
@@ -2605,7 +2621,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                       <IconPowerClip className="w-3.5 h-3.5" />
                       PowerClip
                     </span>
-                    <span className="text-[9px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1 py-0.2 rounded font-semibold">CorelDRAW</span>
+                    <span className="text-[9px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1 py-0.2 rounded font-semibold">NuraDraw</span>
                   </div>
 
                   <button
@@ -3562,7 +3578,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 );
               })()}
 
-              {/* Bitmap Dropdown Menu (CorelDRAW Bitmap Tab) */}
+              {/* Bitmap Dropdown Menu (NuraDraw Bitmap Tab) */}
               {activeMenu === 'bitmap' && item.key === 'bitmap' && (
                 <div
                   className={`absolute left-0 top-full mt-0.5 w-64 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
@@ -3693,14 +3709,17 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 </div>
               )}
 
-              {/* Effects Dropdown Menu (Exact CorelDRAW Effects Menu matching effect_tab_19a41bcd.jpg) */}
+              {/* Effects Dropdown Menu (Exact NuraDraw Effects Menu matching effect_tab_19a41bcd.jpg) */}
               {activeMenu === 'effects' && item.key === 'effects' && (() => {
                 const hasAnyEffect = Boolean(
                   selectedObject &&
                     (selectedObject.shadow ||
                       (selectedObject.opacity ?? 1) < 0.99 ||
                       (selectedObject as any).hasEffects ||
-                      selectedObject.type === 'group')
+                      (selectedObject as any).metallicEffectConfig ||
+                      typeof selectedObject.fill === 'object' ||
+                      selectedObject.type === 'group' ||
+                      selectedObject.type === 'activeselection')
                 );
                 const effectCategories: {
                   key: string;
@@ -3868,7 +3887,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                           : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
                       }`}
                     >
-                      {/* Left CorelDRAW Icon Gutter Strip */}
+                      {/* Left NuraDraw Icon Gutter Strip */}
                       <div
                         className={`pointer-events-none absolute left-0 top-0 bottom-0 w-7 border-r ${
                           isDark ? 'bg-[#46494f] border-[#646870]' : 'bg-[#eeeeef] border-[#d8dadf]'
@@ -3895,7 +3914,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                       <div className={`relative z-10 h-px my-1 ml-7 mr-1 ${isDark ? 'bg-zinc-700' : 'bg-[#d4d6da]'}`} />
 
                       {/* 15 Flyout Effect Categories */}
-                      {effectCategories.map((cat) => (
+                      {effectCategories.map((cat, catIdx) => (
                         <div
                           key={cat.key}
                           className="relative z-10"
@@ -3924,7 +3943,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
 
                           {activeEffectsSubmenu === cat.key && (
                             <div
-                              className={`absolute left-full top-0 ml-0.5 w-56 rounded-xs shadow-xl py-1 z-50 border text-[12px] ${
+                              className={`absolute left-full ${catIdx >= 8 ? 'bottom-0' : 'top-0'} ml-0.5 w-56 rounded-xs shadow-xl py-1 z-50 border text-[12px] ${
                                 isDark
                                   ? 'bg-[#4e5157] border-[#6a6e77] text-zinc-100'
                                   : 'bg-[#f4f4f6] border-[#9a9ea4] text-zinc-900'
@@ -4054,7 +4073,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                 );
               })()}
 
-              {/* Layout Dropdown Menu (Exact CorelDRAW Layout Menu matching layout_tab_457dd0e8.png) */}
+              {/* Layout Dropdown Menu (Exact NuraDraw Layout Menu matching layout_tab_457dd0e8.png) */}
               {activeMenu === 'layout' && item.key === 'layout' && (
                 <div
                   className={`absolute left-0 top-full mt-0.5 w-60 rounded-xs shadow-2xl py-1 z-50 text-[12px] border ${
@@ -5110,7 +5129,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                     onClick={() => onToggleDocker('hints')}
                     className="w-full text-left px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex justify-between items-center"
                   >
-                    <span>CorelDRAW Shortcuts</span>
+                    <span>NuraDraw Shortcuts</span>
                   </button>
                   <button
                     onClick={() => onToggleDocker('hints')}
@@ -5120,7 +5139,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                   </button>
                   <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
                   <div className="px-3 py-1.5 text-zinc-500 text-[10.5px]">
-                    <div className="font-semibold text-zinc-700 dark:text-zinc-300">TraceDraw / CorelDRAW Web</div>
+                    <div className="font-semibold text-zinc-700 dark:text-zinc-300">NuraDraw Vector Studio</div>
                     <div>High-precision vector editor with magnetic node snapping.</div>
                   </div>
                 </div>
@@ -5175,10 +5194,10 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
       </div>
 
       {/* =========================================================================
-          ROW 2: CorelDRAW Standard Command Bar (Exact Icons from Screenshot)
+          ROW 2: NuraDraw Standard Command Bar (Exact Icons from Screenshot)
           ========================================================================= */}
       <div className={`h-8 border-b px-1.5 flex items-center gap-1 relative z-20 ${
-        isDark ? 'corel-dark-bar bg-[#4d5056] border-[#646870] text-zinc-100' : 'bg-[#ebecee] border-[#cfd1d6] text-zinc-900'
+        isDark ? 'nura-dark-bar bg-[#4d5056] border-[#646870] text-zinc-100' : 'bg-[#ebecee] border-[#cfd1d6] text-zinc-900'
       }`}>
         {/* New Document */}
         <button onClick={onNewDocument} title="New Document (Ctrl+N)" className="p-1 hover:bg-[#dbe0e6] rounded-xs border border-transparent hover:border-zinc-300">
@@ -5370,7 +5389,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
 
         {/* Snap Off & Snap To */}
         <div className="relative flex items-center">
-          {/* Master Snap Button: CorelDRAW Snap Off / Snap On toggle */}
+          {/* Master Snap Button: NuraDraw Snap Off / Snap On toggle */}
           <button
             onClick={() => onUpdateSnapConfig({ enabled: !snapConfig.enabled })}
             title={
@@ -5598,13 +5617,13 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
       </div>
 
       {/* =========================================================================
-          ROW 3: Exact CorelDRAW Property Bar (Matches Screenshot)
+          ROW 3: Exact NuraDraw Property Bar (Matches Screenshot)
           ========================================================================= */}
       <div className={`h-9 px-2 flex items-center gap-2 overflow-x-auto text-xs border-t ${
-        isDark ? 'corel-dark-bar bg-[#52555c] border-[#676b73] text-zinc-100' : 'bg-[#ebecee] border-[#f5f6f8]'
+        isDark ? 'nura-dark-bar bg-[#52555c] border-[#676b73] text-zinc-100' : 'bg-[#ebecee] border-[#f5f6f8]'
       }`}>
         {activeTool === 'shape' ? (
-          /* Shape Tool (F10): CorelDRAW Curve & Node Editing Property Bar */
+          /* Shape Tool (F10): NuraDraw Curve & Node Editing Property Bar */
           <div className="flex items-center gap-1.5 w-full shrink-0">
             <div className="flex items-center gap-1 pr-1.5 border-r border-[#c2c5cb] shrink-0">
               <Spline className="w-3.5 h-3.5 text-[#0078d7]" />
@@ -5842,143 +5861,310 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
               </span>
             )}
           </div>
-        ) : isDimensionTool ? (
-          /* Dimension Tools Property Bar (Parallel, H/V, Angular, Segment, 3-Point Callout) */
-          <div className="flex items-center gap-2 w-full shrink-0">
-            <div className="flex items-center gap-1 pr-2 border-r border-[#c2c5cb] shrink-0">
-              <IconDimension className="w-3.5 h-3.5 text-[#0078d7]" />
-              <span className="font-semibold text-[11px]">Dimension Tools</span>
-            </div>
+        ) : isDimensionTool || isDimensionSelected ? (
+          /* Dimension Tools & Selected Dimension Object Property Bar */
+          (() => {
+            const selDimData = isDimensionSelected
+              ? ((selectedObject as any).dimensionData as DimensionData | undefined)
+              : undefined;
+            const selDimKind = isDimensionSelected
+              ? selDimData?.kind || (selectedObject as any).dimensionKind || 'parallel'
+              : null;
+            const isAngularMode =
+              (isDimensionTool && activeTool === 'angular_dimension') ||
+              (!isDimensionTool && selDimKind === 'angular');
+            const isCalloutMode =
+              (isDimensionTool && activeTool === 'callout') ||
+              (!isDimensionTool && selDimKind === 'callout');
 
-            {/* 5 Dimension Subtool Switcher */}
-            <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5 gap-0.5 shrink-0">
-              {[
-                { id: 'dimension' as ToolType, label: 'Parallel', icon: <IconDimension className="w-3.5 h-3.5" /> },
-                { id: 'hv_dimension' as ToolType, label: 'Horiz/Vert', icon: <IconHVDimension className="w-3.5 h-3.5" /> },
-                { id: 'angular_dimension' as ToolType, label: 'Angular', icon: <IconAngularDimension className="w-3.5 h-3.5" /> },
-                { id: 'segment_dimension' as ToolType, label: 'Segment', icon: <IconSegmentDimension className="w-3.5 h-3.5" /> },
-                { id: 'callout' as ToolType, label: '2-Leg Callout', icon: <IconCallout className="w-3.5 h-3.5" /> },
-              ].map((dt) => (
-                <button
-                  key={dt.id}
-                  onClick={() => onSelectTool?.(dt.id)}
-                  title={dt.label}
-                  className={`px-1.5 h-6 flex items-center gap-1 rounded-xs text-[11px] transition cursor-pointer ${
-                    activeTool === dt.id
-                      ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
-                      : 'hover:bg-[#dbe0e6] text-zinc-800'
-                  }`}
-                >
-                  {dt.icon}
-                  <span>{dt.label}</span>
-                </button>
-              ))}
-            </div>
+            const curUnit = selDimData?.unit ?? dimensionConfig.unit;
+            const curPrecision = selDimData?.precision ?? dimensionConfig.precision;
+            const curStyle = selDimData?.style ?? dimensionConfig.style;
+            const curTextPos = selDimData?.textPosition ?? dimensionConfig.textPosition;
+            const curShowUnit = selDimData?.showUnit ?? dimensionConfig.showUnit;
+            const curFontFamily =
+              selDimData?.fontFamily ??
+              (isDimensionSelected ? properties.fontFamily : dimensionConfig.fontFamily) ??
+              'Montserrat';
+            const curFontSize =
+              selDimData?.fontSize ??
+              (isDimensionSelected ? properties.fontSize : dimensionConfig.fontSize) ??
+              13;
+            const curFontWeight =
+              selDimData?.fontWeight ??
+              (isDimensionSelected ? properties.fontWeight : dimensionConfig.fontWeight) ??
+              'bold';
+            const curFontStyle =
+              selDimData?.fontStyle ??
+              (isDimensionSelected ? properties.fontStyle : dimensionConfig.fontStyle) ??
+              'normal';
+            const curTextColor =
+              selDimData?.textColor ??
+              (isDimensionSelected && typeof properties.fill === 'string' && properties.fill.startsWith('#')
+                ? properties.fill
+                : dimensionConfig.textColor) ??
+              '#0f172a';
+            const curStrokeColor =
+              selDimData?.strokeColor ??
+              (isDimensionSelected && typeof properties.stroke === 'string' && properties.stroke.startsWith('#')
+                ? properties.stroke
+                : dimensionConfig.strokeColor) ??
+              '#1e293b';
 
-            {activeTool !== 'callout' && (
-              <>
-                <div className="h-6 w-px bg-[#c2c5cb] shrink-0" />
+            const applyDimUpdate = (patch: Partial<DimensionConfig>) => {
+              onUpdateDimensionConfig?.(patch);
+            };
 
-                {/* Precision */}
-                {activeTool !== 'angular_dimension' && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[11px] opacity-75">Units:</span>
-                    <select
-                      value={dimensionConfig.unit}
-                      onChange={(e) => onUpdateDimensionConfig?.({ unit: e.target.value as any })}
-                      className="bg-white border border-[#abadb3] h-6 px-1 text-[11px] text-zinc-900 rounded-xs outline-none cursor-pointer"
-                      title="Dimension Measurement Units"
-                    >
-                      <option value="auto">Auto ({activeUnitInfo.symbol})</option>
-                      <option value="mm">mm</option>
-                      <option value="cm">cm</option>
-                      <option value="in">in</option>
-                      <option value="pt">pt</option>
-                      <option value="px">px</option>
-                    </select>
+            return (
+              <div className="flex items-center gap-1.5 w-full shrink-0 overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-1 pr-2 border-r border-[#c2c5cb] shrink-0">
+                  <IconDimension className="w-3.5 h-3.5 text-[#0078d7]" />
+                  <span className="font-semibold text-[11px]">
+                    {isDimensionSelected && !isDimensionTool
+                      ? `Dimension (${String(selDimKind || 'parallel').toUpperCase()})`
+                      : 'Dimension'}
+                  </span>
+                </div>
+
+                {/* 5 Dimension Subtool Switcher (shown when Dimension tool is active) */}
+                {isDimensionTool && (
+                  <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5 gap-0.5 shrink-0">
+                    {[
+                      { id: 'dimension' as ToolType, label: 'Parallel', icon: <IconDimension className="w-3.5 h-3.5" /> },
+                      { id: 'hv_dimension' as ToolType, label: 'Horiz/Vert', icon: <IconHVDimension className="w-3.5 h-3.5" /> },
+                      { id: 'angular_dimension' as ToolType, label: 'Angular', icon: <IconAngularDimension className="w-3.5 h-3.5" /> },
+                      { id: 'segment_dimension' as ToolType, label: 'Segment', icon: <IconSegmentDimension className="w-3.5 h-3.5" /> },
+                      { id: 'callout' as ToolType, label: 'Callout', icon: <IconCallout className="w-3.5 h-3.5" /> },
+                    ].map((dt) => (
+                      <button
+                        key={dt.id}
+                        onClick={() => onSelectTool?.(dt.id)}
+                        title={dt.label}
+                        className={`px-1.5 h-6 flex items-center gap-1 rounded-xs text-[11px] transition cursor-pointer ${
+                          activeTool === dt.id
+                            ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
+                            : 'hover:bg-[#dbe0e6] text-zinc-800'
+                        }`}
+                      >
+                        {dt.icon}
+                        <span>{dt.label}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
 
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-[11px] opacity-75">Precision:</span>
+                {!isCalloutMode && (
+                  <>
+                    <div className="h-6 w-px bg-[#c2c5cb] shrink-0" />
+
+                    {/* Unit Selector (Auto / mm / cm / in / pt / px) */}
+                    {!isAngularMode && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[11px] opacity-75">Units:</span>
+                        <select
+                          value={curUnit}
+                          onChange={(e) => applyDimUpdate({ unit: e.target.value as any })}
+                          className="bg-white border border-[#abadb3] h-6 px-1 text-[11px] text-zinc-900 rounded-xs outline-none cursor-pointer font-medium"
+                          title="Dimension Measurement Unit Symbol"
+                        >
+                          <option value="auto">Auto ({activeUnitInfo.symbol})</option>
+                          <option value="mm">mm</option>
+                          <option value="cm">cm</option>
+                          <option value="in">in</option>
+                          <option value="pt">pt</option>
+                          <option value="px">px</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Precision */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[11px] opacity-75">Dec:</span>
+                      <select
+                        value={curPrecision}
+                        onChange={(e) => applyDimUpdate({ precision: Number(e.target.value) as 0 | 1 | 2 | 3 })}
+                        className="bg-white border border-[#abadb3] h-6 px-1 text-[11px] text-zinc-900 rounded-xs outline-none cursor-pointer font-mono"
+                        title="Decimal Precision"
+                      >
+                        <option value={0}>0</option>
+                        <option value={1}>0.0</option>
+                        <option value={2}>0.00</option>
+                        <option value={3}>0.000</option>
+                      </select>
+                    </div>
+
+                    {/* Show Unit Symbol toggle */}
+                    {!isAngularMode && (
+                      <label className="flex items-center gap-1 text-[11px] cursor-pointer shrink-0 px-1" title="Include Unit Symbol with Dimension Value">
+                        <input
+                          type="checkbox"
+                          checked={curShowUnit}
+                          onChange={(e) => applyDimUpdate({ showUnit: e.target.checked })}
+                          className="accent-[#0078d7]"
+                        />
+                        <span>Unit</span>
+                      </label>
+                    )}
+
+                    {/* Style: Arrows / Ticks */}
+                    {!isAngularMode && (
+                      <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5 gap-0.5 shrink-0">
+                        <button
+                          onClick={() => applyDimUpdate({ style: 'arrows' })}
+                          className={`px-1.5 h-5 rounded-xs text-[11px] cursor-pointer ${
+                            curStyle === 'arrows'
+                              ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
+                              : 'hover:bg-[#dbe0e6] text-zinc-800'
+                          }`}
+                          title="Arrowhead Endpoints"
+                        >
+                          Arrows
+                        </button>
+                        <button
+                          onClick={() => applyDimUpdate({ style: 'ticks' })}
+                          className={`px-1.5 h-5 rounded-xs text-[11px] cursor-pointer ${
+                            curStyle === 'ticks'
+                              ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
+                              : 'hover:bg-[#dbe0e6] text-zinc-800'
+                          }`}
+                          title="45° Architectural Tick Endpoints"
+                        >
+                          Ticks
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Text Placement */}
+                    <button
+                      onClick={() =>
+                        applyDimUpdate({
+                          textPosition: curTextPos === 'above' ? 'center' : 'above',
+                        })
+                      }
+                      title="Toggle Dimension Text Position (Above Line / Centered)"
+                      className="px-1.5 h-6 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] rounded-xs text-[11px] text-zinc-900 cursor-pointer shrink-0"
+                    >
+                      {curTextPos === 'above' ? 'Above' : 'Center'}
+                    </button>
+                  </>
+                )}
+
+                <div className="h-6 w-px bg-[#c2c5cb] shrink-0" />
+
+                {/* Dimension Text Typography & Colors */}
+                <div className="flex items-center gap-1 shrink-0" title="Dimension Text Font">
                   <select
-                    value={dimensionConfig.precision}
-                    onChange={(e) => onUpdateDimensionConfig?.({ precision: Number(e.target.value) as 0 | 1 | 2 | 3 })}
-                    className="bg-white border border-[#abadb3] h-6 px-1 text-[11px] text-zinc-900 rounded-xs outline-none cursor-pointer font-mono"
-                    title="Decimal Precision"
+                    value={curFontFamily}
+                    onChange={(e) => applyDimUpdate({ fontFamily: e.target.value })}
+                    className="bg-white border border-[#abadb3] h-6 px-1 text-[11px] text-zinc-900 rounded-xs outline-none cursor-pointer max-w-[110px]"
+                    style={{ fontFamily: curFontFamily }}
                   >
-                    <option value={0}>0</option>
-                    <option value={1}>0.0</option>
-                    <option value={2}>0.00</option>
-                    <option value={3}>0.000</option>
+                    {POPULAR_FONTS.map((f) => (
+                      <option key={f.name} value={f.name} style={{ fontFamily: f.name }}>
+                        {f.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                {/* Style: Arrows / Ticks */}
-                {activeTool !== 'angular_dimension' && (
-                  <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5 gap-0.5 shrink-0">
-                    <button
-                      onClick={() => onUpdateDimensionConfig?.({ style: 'arrows' })}
-                      className={`px-1.5 h-6 rounded-xs text-[11px] cursor-pointer ${
-                        dimensionConfig.style === 'arrows'
-                          ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
-                          : 'hover:bg-[#dbe0e6] text-zinc-800'
-                      }`}
-                    >
-                      Arrows
-                    </button>
-                    <button
-                      onClick={() => onUpdateDimensionConfig?.({ style: 'ticks' })}
-                      className={`px-1.5 h-6 rounded-xs text-[11px] cursor-pointer ${
-                        dimensionConfig.style === 'ticks'
-                          ? 'bg-[#cce8ff] border border-[#99d1ff] font-semibold text-zinc-900'
-                          : 'hover:bg-[#dbe0e6] text-zinc-800'
-                      }`}
-                    >
-                      Ticks
-                    </button>
-                  </div>
-                )}
-
-                {/* Text Placement */}
-                <button
-                  onClick={() =>
-                    onUpdateDimensionConfig?.({
-                      textPosition: dimensionConfig.textPosition === 'above' ? 'center' : 'above',
-                    })
-                  }
-                  title="Toggle Dimension Text Position (Above Line / Centered)"
-                  className="px-2 h-6 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] rounded-xs text-[11px] text-zinc-900 cursor-pointer shrink-0"
-                >
-                  Text: {dimensionConfig.textPosition === 'above' ? 'Above' : 'Center'}
-                </button>
-
-                {activeTool !== 'angular_dimension' && (
-                  <label className="flex items-center gap-1 text-[11px] cursor-pointer shrink-0">
+                {/* Text Size */}
+                <div className="flex items-center gap-1 shrink-0" title="Dimension Text Size (pt)">
+                  <span className="text-[11px] opacity-75">Size:</span>
+                  <div className="flex items-center border border-[#abadb3] bg-white h-6 rounded-xs">
                     <input
-                      type="checkbox"
-                      checked={dimensionConfig.showUnit}
-                      onChange={(e) => onUpdateDimensionConfig?.({ showUnit: e.target.checked })}
-                      className="accent-[#0078d7]"
+                      type="number"
+                      min="6"
+                      max="120"
+                      value={Math.round(curFontSize)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= 6 && v <= 200) applyDimUpdate({ fontSize: v });
+                      }}
+                      className="w-10 px-1 text-center text-[11px] font-mono text-zinc-900 outline-none"
                     />
-                    <span>Show Unit</span>
-                  </label>
-                )}
-              </>
-            )}
+                    <select
+                      value={Math.round(curFontSize)}
+                      onChange={(e) => applyDimUpdate({ fontSize: Number(e.target.value) })}
+                      className="w-4 bg-zinc-100 hover:bg-zinc-200 border-l border-[#abadb3] text-[10px] text-zinc-700 outline-none cursor-pointer h-full px-0"
+                      title="Text Size Presets"
+                    >
+                      {[8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 36, 48].map((sz) => (
+                        <option key={sz} value={sz}>
+                          {sz} pt
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            <span className="ml-auto text-[10.5px] opacity-75 shrink-0">
-              {activeTool === 'angular_dimension'
-                ? 'Click Vertex → Click Ray 1 → Click Ray 2 (Esc cancels)'
-                : activeTool === 'callout'
-                ? 'Click Target → Click Elbow → Click Shoulder (Esc cancels)'
-                : activeTool === 'segment_dimension'
-                ? 'Click any shape/path edge or drag between two points'
-                : activeTool === 'hv_dimension'
-                ? 'Drag between 2 points to measure Horizontal or Vertical span'
-                : 'Drag between 2 points (OSNAP enabled; hold Shift for 15°/45°/90°)'}
-            </span>
-          </div>
+                {/* Bold & Italic */}
+                <div className="flex items-center border border-[#abadb3] rounded-xs bg-white p-0.5 gap-0.5 shrink-0">
+                  <button
+                    onClick={() =>
+                      applyDimUpdate({
+                        fontWeight: curFontWeight === 'bold' || curFontWeight === '700' ? 'normal' : 'bold',
+                      })
+                    }
+                    title="Bold Dimension Text"
+                    className={`w-5 h-5 flex items-center justify-center rounded-xs cursor-pointer ${
+                      curFontWeight === 'bold' || curFontWeight === '700'
+                        ? 'bg-[#00aeef] text-white'
+                        : 'text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <Bold className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() =>
+                      applyDimUpdate({
+                        fontStyle: curFontStyle === 'italic' ? 'normal' : 'italic',
+                      })
+                    }
+                    title="Italic Dimension Text"
+                    className={`w-5 h-5 flex items-center justify-center rounded-xs cursor-pointer ${
+                      curFontStyle === 'italic'
+                        ? 'bg-[#00aeef] text-white'
+                        : 'text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <Italic className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Text Color & Line/Arrow Color */}
+                <div className="flex items-center gap-1 shrink-0" title="Dimension Text Color">
+                  <span className="text-[10.5px] opacity-75">Txt:</span>
+                  <input
+                    type="color"
+                    value={/^#[0-9a-f]{6}$/i.test(curTextColor) ? curTextColor : '#0f172a'}
+                    onChange={(e) => applyDimUpdate({ textColor: e.target.value })}
+                    className="w-5 h-5 border border-[#abadb3] bg-white cursor-pointer rounded-xs p-0"
+                  />
+                </div>
+                <div className="flex items-center gap-1 shrink-0" title="Lines & Arrows Color">
+                  <span className="text-[10.5px] opacity-75">Line:</span>
+                  <input
+                    type="color"
+                    value={/^#[0-9a-f]{6}$/i.test(curStrokeColor) ? curStrokeColor : '#1e293b'}
+                    onChange={(e) => applyDimUpdate({ strokeColor: e.target.value })}
+                    className="w-5 h-5 border border-[#abadb3] bg-white cursor-pointer rounded-xs p-0"
+                  />
+                </div>
+
+                <span className="ml-auto text-[10.5px] opacity-75 shrink-0 whitespace-nowrap">
+                  {isDimensionSelected && !isDimensionTool
+                    ? 'Double-click dimension to edit text directly • Adjust Units & Text Size above'
+                    : activeTool === 'angular_dimension'
+                    ? 'Click Vertex → Ray 1 → Ray 2 (Esc cancels)'
+                    : activeTool === 'callout'
+                    ? 'Click Target → Elbow → Shoulder (Esc cancels)'
+                    : activeTool === 'segment_dimension'
+                    ? 'Click edge → Move anywhere → Click to place (or 3-click P1→P2→P3)'
+                    : 'Click P1 → Click P2 → Move anywhere & Click P3 to place (Esc cancels)'}
+                </span>
+              </div>
+            );
+          })()
         ) : isEffectTool ? (
           /* Interactive Drop Shadow & Effect Sub-Commands Property Bar (Dropdown) */
           (() => {
@@ -5999,7 +6185,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                   <span className="font-semibold text-[11px]">Drop Shadow Effects</span>
                 </div>
 
-                {/* CorelDRAW Effect Sub-Commands Dropdown */}
+                {/* NuraDraw Effect Sub-Commands Dropdown */}
                 <div className="relative shrink-0">
                   <button
                     ref={effectButtonRef}
@@ -6198,6 +6384,9 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                         {sw.label}
                       </option>
                     ))}
+                    {!STROKE_WIDTHS.some((sw) => sw.value === properties.strokeWidth) && (
+                      <option value={properties.strokeWidth}>{properties.strokeWidth} pt</option>
+                    )}
                   </select>
                 </div>
 
@@ -6512,6 +6701,134 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
               </div>
             );
           })()
+        ) : isSmartFillTool ? (
+          /* Smart Fill Tool Property Bar */
+          <div className="flex items-center gap-2.5 w-full shrink-0">
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <Palette className="w-4 h-4 text-amber-500" />
+              <span className="font-semibold text-[11px]">Smart Fill Tool</span>
+            </div>
+
+            {/* Fill Options */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <span className="text-[11px] opacity-80">Fill:</span>
+              <select
+                value={smartFillConfig.useFillColor ? 'specify' : 'none'}
+                onChange={(e) =>
+                  onUpdateSmartFillConfig?.({ useFillColor: e.target.value === 'specify' })
+                }
+                className="h-6 text-[11px] bg-white text-zinc-900 border border-[#abadb3] rounded-xs px-1.5 outline-none cursor-pointer"
+              >
+                <option value="specify">Specify</option>
+                <option value="none">No Fill</option>
+              </select>
+              {smartFillConfig.useFillColor && (
+                <>
+                  <input
+                    type="color"
+                    value={
+                      /^#[0-9a-f]{6}$/i.test(smartFillConfig.fillColor)
+                        ? smartFillConfig.fillColor
+                        : '#00a651'
+                    }
+                    onChange={(e) => onUpdateSmartFillConfig?.({ fillColor: e.target.value })}
+                    className="w-6 h-6 p-0.5 bg-white border border-[#abadb3] rounded-xs cursor-pointer"
+                    title="Smart Fill Color"
+                  />
+                  <span className="font-mono text-[10.5px] uppercase min-w-[54px]">
+                    {smartFillConfig.fillColor}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Outline Options */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <span className="text-[11px] opacity-80">Outline:</span>
+              <select
+                value={smartFillConfig.outlineMode}
+                onChange={(e) => {
+                  const mode = e.target.value as 'none' | 'specify';
+                  onUpdateSmartFillConfig?.({
+                    outlineMode: mode,
+                    outlineWidth: mode === 'specify' ? Math.max(1, smartFillConfig.outlineWidth || 1) : 0,
+                  });
+                }}
+                className="h-6 text-[11px] bg-white text-zinc-900 border border-[#abadb3] rounded-xs px-1.5 outline-none cursor-pointer"
+              >
+                <option value="none">No Outline</option>
+                <option value="specify">Specify</option>
+              </select>
+              {smartFillConfig.outlineMode === 'specify' && (
+                <>
+                  <select
+                    value={smartFillConfig.outlineWidth || 1}
+                    onChange={(e) =>
+                      onUpdateSmartFillConfig?.({ outlineWidth: Number(e.target.value) || 1 })
+                    }
+                    className="h-6 text-[11px] bg-white text-zinc-900 border border-[#abadb3] rounded-xs px-1 outline-none cursor-pointer"
+                    title="Outline Width"
+                  >
+                    {[0.5, 1, 1.5, 2, 3, 5, 8].map((w) => (
+                      <option key={w} value={w}>
+                        {w} px
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="color"
+                    value={
+                      /^#[0-9a-f]{6}$/i.test(smartFillConfig.outlineColor)
+                        ? smartFillConfig.outlineColor
+                        : '#000000'
+                    }
+                    onChange={(e) => onUpdateSmartFillConfig?.({ outlineColor: e.target.value })}
+                    className="w-6 h-6 p-0.5 bg-white border border-[#abadb3] rounded-xs cursor-pointer"
+                    title="Outline Color"
+                  />
+                </>
+              )}
+            </div>
+
+            <button
+              onClick={() => onSelectTool?.('pick')}
+              className="h-6 px-2.5 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shadow-2xs shrink-0"
+              title="Finish Smart Fill and switch to Pick Tool (Esc)"
+            >
+              Done (Pick)
+            </button>
+
+            <span className="ml-auto text-[10.5px] opacity-75 shrink-0">
+              Click inside any overlapping intersection or enclosed area to create a new filled object
+            </span>
+          </div>
+        ) : isTransparencyTool ? (
+          /* Transparency Tool Property Bar */
+          <div className="flex items-center gap-2.5 w-full shrink-0">
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <span className="inline-block w-3.5 h-3.5 rounded-xs border border-zinc-500 bg-gradient-to-br from-[#0078d7] to-transparent shrink-0" />
+              <span className="font-semibold text-[11px]">Transparency Tool</span>
+            </div>
+
+            <div className="flex items-center gap-2 pr-2.5 border-r border-[#c2c5cb] shrink-0">
+              <span className="text-[11px] opacity-80">Current Transparency:</span>
+              <span className="font-mono text-[11px] font-semibold px-1.5 py-0.5 bg-white border border-[#abadb3] rounded-xs text-zinc-900 min-w-[44px] text-center">
+                {Math.round((1 - (properties.opacity ?? 1)) * 100)}%
+              </span>
+            </div>
+
+            <button
+              onClick={() => onSelectTool?.('pick')}
+              className="h-6 px-2.5 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 font-medium cursor-pointer shadow-2xs shrink-0"
+              title="Finish Transparency adjustment and switch to Pick Tool (Esc)"
+            >
+              Done (Pick)
+            </button>
+
+            <span className="ml-auto text-[10.5px] opacity-75 shrink-0">
+              Click any object on canvas to open the temporary transparency % box below it
+            </span>
+          </div>
         ) : isEyedropperTool ? (
           /* Color Eyedropper Property Bar */
           <div className="flex items-center gap-3 w-full shrink-0">
@@ -6934,7 +7251,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                   className="w-5 h-5 border border-[#abadb3] bg-white cursor-pointer rounded-xs p-0"
                 />
                 <select
-                  value={properties.strokeWidth || 0}
+                  value={selectedObject ? Number(selectedObject.strokeWidth || 0) : 0}
                   onChange={(e) => onUpdateProperties({ strokeWidth: Number(e.target.value) })}
                   className="bg-white border border-[#abadb3] px-1 py-0.5 h-5 text-[11px] text-zinc-900 outline-none cursor-pointer"
                 >
@@ -6943,6 +7260,12 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                       {sw.label}
                     </option>
                   ))}
+                  {selectedObject &&
+                    !STROKE_WIDTHS.some((sw) => sw.value === Number(selectedObject.strokeWidth || 0)) && (
+                      <option value={Number(selectedObject.strokeWidth || 0)}>
+                        {selectedObject.strokeWidth} pt
+                      </option>
+                    )}
                 </select>
               </div>
 
@@ -7189,7 +7512,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
             {/* Divider */}
             <div className="h-6 w-px bg-[#c2c5cb]" />
 
-            {/* 8. Corner Styles: Round, Scallop, Chamfer (CorelDRAW signature rect controls) */}
+            {/* 8. Corner Styles: Round, Scallop, Chamfer (NuraDraw signature rect controls) */}
             <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5">
               <button
                 onClick={() => setCornerStyle('round')}
@@ -7290,6 +7613,9 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
                     {sw.label}
                   </option>
                 ))}
+                {!STROKE_WIDTHS.some((sw) => sw.value === properties.strokeWidth) && (
+                  <option value={properties.strokeWidth}>{properties.strokeWidth} pt</option>
+                )}
               </select>
             </div>
 
@@ -7563,7 +7889,7 @@ export const CorelTopPanel: React.FC<CorelTopPanelProps> = ({
             </div>
           </div>
         ) : (
-          /* When NO Object is Selected: CorelDRAW Contextual Page Setup Bar (or Symmetry Editing Bar) */
+          /* When NO Object is Selected: NuraDraw Contextual Page Setup Bar (or Symmetry Editing Bar) */
           <div className="flex items-center gap-2.5 w-full overflow-x-auto py-0.5">
             {symmetryEditingConfig && (
               <>

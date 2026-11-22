@@ -226,7 +226,7 @@ async function startServer() {
   }
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`CorelDraw Web server running on http://0.0.0.0:${PORT}`);
+    console.log(`NuraDraw server running on http://0.0.0.0:${PORT}`);
   });
 }
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FilePlus2, FolderOpen, Save, FileDown, X } from 'lucide-react';
 import { DocumentPaletteSwatch } from '../types';
-import { CORELDRAW_PALETTE } from '../utils/palette';
+import { NURADRAW_PALETTE } from '../utils/palette';
 import {
   formatCmykComponents,
   getSwatchLuminance,
@@ -64,7 +64,7 @@ export const PaletteEditorModal: React.FC<PaletteEditorModalProps> = ({
   const isDocumentView = paletteView === 'document';
   const displayedSwatches: DocumentPaletteSwatch[] = isDocumentView
     ? draftSwatches
-    : CORELDRAW_PALETTE.filter((p) => p.hex !== 'transparent').map((p, idx) => ({
+    : NURADRAW_PALETTE.filter((p) => p.hex !== 'transparent').map((p, idx) => ({
         id: `cmyk-${idx}`,
         name: p.name,
         hex: p.hex,
@@ -158,7 +158,7 @@ export const PaletteEditorModal: React.FC<PaletteEditorModalProps> = ({
   const handleSavePaletteFile = (asCustomName = false) => {
     const payload = {
       paletteName: `${documentName} Palette`,
-      type: 'CorelWebDocumentPalette',
+      type: 'NuraDrawDocumentPalette',
       version: 1,
       colors: draftSwatches,
     };

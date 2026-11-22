@@ -175,7 +175,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
         }`}
         style={{ fontFamily: 'Segoe UI, Tahoma, sans-serif' }}
       >
-        {/* CorelDRAW Title Bar */}
+        {/* NuraDraw Title Bar */}
         <div
           className={`px-4 py-2 flex items-center justify-between border-b select-none ${
             isDark ? 'bg-[#44474d] border-[#646870] text-zinc-100' : 'bg-[#e3e5e8] border-[#cfd1d6] text-zinc-800'
@@ -454,7 +454,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                 <div>
                   <h4 className="font-semibold text-sm mb-1">Measurement Units & Coordinate Scaling</h4>
                   <p className="text-[11px] text-zinc-500">
-                    CorelDRAW supports physical print units, typographic units, and screen pixels with live conversion.
+                    NuraDraw supports physical print units, typographic units, and screen pixels with live conversion.
                   </p>
                 </div>
 
@@ -633,7 +633,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer (Classic CorelDRAW Dialog Actions) */}
+        {/* Modal Footer (Classic NuraDraw Dialog Actions) */}
         <div
           className={`px-5 py-3 border-t flex items-center justify-between select-none ${
             isDark ? 'bg-[#44474d] border-[#646870]' : 'bg-[#e9eaed] border-[#cfd1d6]'

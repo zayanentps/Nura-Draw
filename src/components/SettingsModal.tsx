@@ -154,7 +154,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="w-10 h-1.5 rounded-xs bg-[#c9cbcf]" />
                         <div className="w-4 h-1.5 rounded-xs bg-[#abadb3] ml-auto" />
                       </div>
-                      <span className={`text-[10px] ${isDark ? 'text-zinc-300' : 'text-zinc-500'}`}>Classic CorelDRAW Windows interface</span>
+                      <span className={`text-[10px] ${isDark ? 'text-zinc-300' : 'text-zinc-500'}`}>Classic NuraDraw Windows interface</span>
                     </button>
 
                     {/* Dark Theme Card */}

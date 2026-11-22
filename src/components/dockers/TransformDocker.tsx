@@ -47,7 +47,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
   const unitStep = unitInfo.step;
 
   // Selected Anchor (0 to 8: 0=TL, 1=TC, 2=TR, 3=ML, 4=C, 5=MR, 6=BL, 7=BC, 8=BR)
-  // In Corel screenshot, top-center (1) is active
+  // In NuraDraw screenshot, top-center (1) is active
   const [anchor, setAnchor] = useState<number>(1);
 
   // Position state
@@ -116,7 +116,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
   }, [selectedObject, anchor, relativePos, pageConfig.units]);
 
   // When clicking an anchor in Position mode with Relative Position active,
-  // CorelDRAW calculates the directional shift (dx, dy)
+  // NuraDraw calculates the directional shift (dx, dy)
   const handleAnchorClick = (idx: number) => {
     setAnchor(idx);
     if (activeTab === 'position' && relativePos && selectedObject) {
@@ -257,7 +257,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
       return;
     }
 
-    // Step-and-Repeat Copies (CorelDRAW signature functionality)
+    // Step-and-Repeat Copies (NuraDraw signature functionality)
     let lastCloned: fabric.FabricObject = activeObj;
 
     for (let c = 1; c <= count; c++) {
@@ -427,7 +427,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          {/* CorelDRAW crosshair with 4 arrowheads icon */}
+          {/* NuraDraw crosshair with 4 arrowheads icon */}
           <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
             <path d="M8 1v14M1 8h14" />
             <path d="M5.5 3.5L8 1l2.5 2.5M5.5 12.5L8 15l2.5-2.5M3.5 5.5L1 8l2.5 2.5M12.5 5.5L15 8l-2.5 2.5" />
@@ -551,7 +551,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
                 ))}
               </div>
 
-              {/* X and Y Inputs with Corel Up/Down Steppers */}
+              {/* X and Y Inputs with NuraDraw Up/Down Steppers */}
               <div className="flex-1 space-y-1.5">
                 {/* X Input */}
                 <div className="flex items-center">
@@ -1069,7 +1069,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
           </div>
         </div>
 
-        {/* Apply Button (Full Width, CorelDRAW grey bevel style) */}
+        {/* Apply Button (Full Width, NuraDraw grey bevel style) */}
         <button
           type="button"
           onClick={handleApply}

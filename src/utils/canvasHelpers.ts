@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { DimensionConfig, PageConfig } from '../types';
+import { DimensionConfig, DimensionData, PageConfig } from '../types';
 import { UnitType, UNITS_DATA, pxToUnit } from './units';
 
 export function getObjectLabel(obj: fabric.FabricObject): string {
@@ -113,7 +113,7 @@ export function createSpiralPath(turns: number = 3, maxRadius: number = 60): str
 export function formatDimensionValue(
   pxDistance: number,
   pageUnit: UnitType = 'px',
-  config?: DimensionConfig
+  config?: Partial<DimensionConfig>
 ): string {
   const effectiveUnit: UnitType = !config?.unit || config.unit === 'auto' ? pageUnit : config.unit;
   const info = UNITS_DATA[effectiveUnit] || UNITS_DATA.px;
@@ -127,10 +127,10 @@ function buildArrowHead(
   tipX: number,
   tipY: number,
   inwardAngleRad: number,
-  size: number = 9,
+  size: number = 11,
   color: string = '#1e293b'
 ): fabric.Polygon {
-  const spread = Math.PI / 7; // ~25.7 deg half-angle
+  const spread = Math.PI / 6.5;
   const bx1 = tipX - Math.cos(inwardAngleRad - spread) * size;
   const by1 = tipY - Math.sin(inwardAngleRad - spread) * size;
   const bx2 = tipX - Math.cos(inwardAngleRad + spread) * size;
@@ -145,6 +145,7 @@ function buildArrowHead(
       fill: color,
       strokeWidth: 0,
       strokeUniform: true,
+      objectCaching: false,
     }
   );
 }
@@ -153,7 +154,7 @@ function buildTickCap(
   cx: number,
   cy: number,
   axisAngleRad: number,
-  length: number = 10,
+  length: number = 11,
   color: string = '#1e293b'
 ): fabric.Line {
   const tickAngle = axisAngleRad + Math.PI / 4;
@@ -163,7 +164,171 @@ function buildTickCap(
     stroke: color,
     strokeWidth: 2,
     strokeUniform: true,
+    objectCaching: false,
   });
+}
+
+export interface ParallelDimensionGeometry {
+  pxLen: number;
+  angle: number;
+  dx1: number;
+  dy1: number;
+  dx2: number;
+  dy2: number;
+  ext1?: [number, number, number, number];
+  ext2?: [number, number, number, number];
+  cap1?: [number, number, number, number];
+  cap2?: [number, number, number, number];
+  textX: number;
+  textY: number;
+  textDeg: number;
+}
+
+export function computeParallelDimensionGeometry(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  offset: number = 0,
+  textPosition: 'above' | 'center' = 'above',
+  fontSize: number = 13
+): ParallelDimensionGeometry {
+  const pxLen = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const nx = Math.sin(angle);
+  const ny = -Math.cos(angle);
+
+  const dx1 = x1 + nx * offset;
+  const dy1 = y1 + ny * offset;
+  const dx2 = x2 + nx * offset;
+  const dy2 = y2 + ny * offset;
+
+  let ext1: [number, number, number, number] | undefined;
+  let ext2: [number, number, number, number] | undefined;
+  let cap1: [number, number, number, number] | undefined;
+  let cap2: [number, number, number, number] | undefined;
+
+  if (Math.abs(offset) > 2) {
+    const sign = offset >= 0 ? 1 : -1;
+    const extOver = 6 * sign;
+    const extGap = 3 * sign;
+    ext1 = [x1 + nx * extGap, y1 + ny * extGap, dx1 + nx * extOver, dy1 + ny * extOver];
+    ext2 = [x2 + nx * extGap, y2 + ny * extGap, dx2 + nx * extOver, dy2 + ny * extOver];
+  } else {
+    const capLen = 8;
+    cap1 = [dx1 - nx * capLen, dy1 - ny * capLen, dx1 + nx * capLen, dy1 + ny * capLen];
+    cap2 = [dx2 - nx * capLen, dy2 - ny * capLen, dx2 + nx * capLen, dy2 + ny * capLen];
+  }
+
+  let textDeg = (angle * 180) / Math.PI;
+  if (textDeg > 90) textDeg -= 180;
+  if (textDeg < -90) textDeg += 180;
+
+  const midX = (dx1 + dx2) / 2;
+  const midY = (dy1 + dy2) / 2;
+  const textOffset = textPosition === 'center' ? 0 : Math.max(10, Math.round(fontSize * 0.85) + 2);
+  const radUpright = (textDeg * Math.PI) / 180;
+  const textX = midX + Math.sin(radUpright) * textOffset;
+  const textY = midY - Math.cos(radUpright) * textOffset;
+
+  return { pxLen, angle, dx1, dy1, dx2, dy2, ext1, ext2, cap1, cap2, textX, textY, textDeg };
+}
+
+export interface HVDimensionGeometry {
+  orientation: 'horizontal' | 'vertical';
+  pxLen: number;
+  dimCoord: number; // dimY when horizontal, dimX when vertical
+  dimLine: [number, number, number, number];
+  ext1: [number, number, number, number];
+  ext2: [number, number, number, number];
+  dirAngle: number;
+  textX: number;
+  textY: number;
+  textDeg: number;
+}
+
+export function computeHVDimensionGeometry(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  placePt?: { x: number; y: number },
+  textPosition: 'above' | 'center' = 'above',
+  fontSize: number = 13
+): HVDimensionGeometry {
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+
+  let isHorizontal = dx >= dy;
+  if (placePt) {
+    if (dx < 3 && dy >= 3) {
+      isHorizontal = false;
+    } else if (dy < 3 && dx >= 3) {
+      isHorizontal = true;
+    } else {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      const outY = placePt.y < minY ? minY - placePt.y : placePt.y > maxY ? placePt.y - maxY : 0;
+      const outX = placePt.x < minX ? minX - placePt.x : placePt.x > maxX ? placePt.x - maxX : 0;
+      if (outY > outX + 2) {
+        isHorizontal = true;
+      } else if (outX > outY + 2) {
+        isHorizontal = false;
+      } else {
+        const distCenterY = Math.abs(placePt.y - (y1 + y2) / 2);
+        const distCenterX = Math.abs(placePt.x - (x1 + x2) / 2);
+        isHorizontal = distCenterY >= distCenterX ? true : dx >= dy;
+      }
+    }
+  }
+
+  const textGap = textPosition === 'center' ? 0 : Math.max(10, Math.round(fontSize * 0.85) + 2);
+
+  if (isHorizontal) {
+    const dimY = placePt ? placePt.y : y2;
+    const s1 = dimY >= y1 ? 1 : -1;
+    const s2 = dimY >= y2 ? 1 : -1;
+    const ext1: [number, number, number, number] =
+      Math.abs(dimY - y1) > 2 ? [x1, y1 + 3 * s1, x1, dimY + 6 * s1] : [x1, dimY - 8, x1, dimY + 8];
+    const ext2: [number, number, number, number] =
+      Math.abs(dimY - y2) > 2 ? [x2, y2 + 3 * s2, x2, dimY + 6 * s2] : [x2, dimY - 8, x2, dimY + 8];
+
+    return {
+      orientation: 'horizontal',
+      pxLen: dx,
+      dimCoord: dimY,
+      dimLine: [x1, dimY, x2, dimY],
+      ext1,
+      ext2,
+      dirAngle: x2 >= x1 ? 0 : Math.PI,
+      textX: (x1 + x2) / 2,
+      textY: dimY - textGap,
+      textDeg: 0,
+    };
+  } else {
+    const dimX = placePt ? placePt.x : x2;
+    const s1 = dimX >= x1 ? 1 : -1;
+    const s2 = dimX >= x2 ? 1 : -1;
+    const ext1: [number, number, number, number] =
+      Math.abs(dimX - x1) > 2 ? [x1 + 3 * s1, y1, dimX + 6 * s1, y1] : [dimX - 8, y1, dimX + 8, y1];
+    const ext2: [number, number, number, number] =
+      Math.abs(dimX - x2) > 2 ? [x2 + 3 * s2, y2, dimX + 6 * s2, y2] : [dimX - 8, y2, dimX + 8, y2];
+
+    return {
+      orientation: 'vertical',
+      pxLen: dy,
+      dimCoord: dimX,
+      dimLine: [dimX, y1, dimX, y2],
+      ext1,
+      ext2,
+      dirAngle: y2 >= y1 ? Math.PI / 2 : -Math.PI / 2,
+      textX: dimX - textGap,
+      textY: (y1 + y2) / 2,
+      textDeg: -90,
+    };
+  }
 }
 
 export function createDimensionObject(
@@ -173,117 +338,121 @@ export function createDimensionObject(
   y2: number,
   options?: {
     pageUnit?: UnitType;
-    config?: DimensionConfig;
+    config?: Partial<DimensionConfig>;
     offset?: number;
     kind?: 'parallel' | 'segment';
     strokeColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    underline?: boolean;
+    textBackgroundColor?: string;
   }
 ): fabric.Group {
-  const pxLen = Math.hypot(x2 - x1, y2 - y1);
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const offset = options?.offset ?? 0;
-  const color = options?.strokeColor || '#1e293b';
   const cfg = options?.config;
+  const offset = options?.offset ?? 0;
+  const color = options?.strokeColor || cfg?.strokeColor || '#1e293b';
+  const textColor = options?.textColor || cfg?.textColor || '#0f172a';
+  const fontSize = options?.fontSize || cfg?.fontSize || 13;
+  const fontFamily = options?.fontFamily || cfg?.fontFamily || 'Montserrat';
+  const fontWeight = options?.fontWeight || cfg?.fontWeight || 'bold';
+  const fontStyle = options?.fontStyle || cfg?.fontStyle || 'normal';
+  const underline = !!options?.underline;
+  const textBackgroundColor = options?.textBackgroundColor || 'rgba(255,255,255,0.9)';
   const style = cfg?.style || 'arrows';
+  const textPosition = cfg?.textPosition || 'above';
+  const unit = cfg?.unit || 'auto';
+  const precision = cfg?.precision !== undefined ? cfg.precision : 2;
+  const showUnit = cfg?.showUnit !== false;
 
-  // Unit perpendicular normal (pointing "above" line in screen coords)
-  const nx = Math.sin(angle);
-  const ny = -Math.cos(angle);
-
-  // Dimension line endpoints (shifted by offset if any)
-  const dx1 = x1 + nx * offset;
-  const dy1 = y1 + ny * offset;
-  const dx2 = x2 + nx * offset;
-  const dy2 = y2 + ny * offset;
-
+  const geom = computeParallelDimensionGeometry(x1, y1, x2, y2, offset, textPosition, fontSize);
   const items: fabric.FabricObject[] = [];
 
-  // Extension / witness lines if offset !== 0
-  if (Math.abs(offset) > 1) {
-    const sign = offset >= 0 ? 1 : -1;
-    const extOver = 5 * sign;
-    const extGap = 3 * sign;
+  if (geom.ext1 && geom.ext2) {
     items.push(
-      new fabric.Line([x1 + nx * extGap, y1 + ny * extGap, dx1 + nx * extOver, dy1 + ny * extOver], {
-        stroke: color,
-        strokeWidth: 1.1,
-        strokeUniform: true,
-      }),
-      new fabric.Line([x2 + nx * extGap, y2 + ny * extGap, dx2 + nx * extOver, dy2 + ny * extOver], {
-        stroke: color,
-        strokeWidth: 1.1,
-        strokeUniform: true,
-      })
+      new fabric.Line(geom.ext1, { stroke: color, strokeWidth: 1.2, strokeUniform: true, objectCaching: false }),
+      new fabric.Line(geom.ext2, { stroke: color, strokeWidth: 1.2, strokeUniform: true, objectCaching: false })
     );
-  } else {
-    // End witness caps for direct parallel dimension
-    const capLen = 7;
+  } else if (geom.cap1 && geom.cap2) {
     items.push(
-      new fabric.Line([dx1 - nx * capLen, dy1 - ny * capLen, dx1 + nx * capLen, dy1 + ny * capLen], {
-        stroke: color,
-        strokeWidth: 1.4,
-        strokeUniform: true,
-      }),
-      new fabric.Line([dx2 - nx * capLen, dy2 - ny * capLen, dx2 + nx * capLen, dy2 + ny * capLen], {
-        stroke: color,
-        strokeWidth: 1.4,
-        strokeUniform: true,
-      })
+      new fabric.Line(geom.cap1, { stroke: color, strokeWidth: 1.4, strokeUniform: true, objectCaching: false }),
+      new fabric.Line(geom.cap2, { stroke: color, strokeWidth: 1.4, strokeUniform: true, objectCaching: false })
     );
   }
 
   // Main dimension line
   items.push(
-    new fabric.Line([dx1, dy1, dx2, dy2], {
+    new fabric.Line([geom.dx1, geom.dy1, geom.dx2, geom.dy2], {
       stroke: color,
       strokeWidth: 1.6,
       strokeUniform: true,
+      objectCaching: false,
     })
   );
 
   // End markers (Arrows or 45-deg Architectural Ticks)
-  if (pxLen > 8) {
+  if (geom.pxLen > 6) {
+    const arrowSize = geom.pxLen < 28 ? Math.max(5.5, geom.pxLen * 0.3) : 11;
     if (style === 'ticks') {
-      items.push(buildTickCap(dx1, dy1, angle, 10, color), buildTickCap(dx2, dy2, angle, 10, color));
+      items.push(buildTickCap(geom.dx1, geom.dy1, geom.angle, 11, color), buildTickCap(geom.dx2, geom.dy2, geom.angle, 11, color));
     } else {
       items.push(
-        buildArrowHead(dx1, dy1, angle + Math.PI, 9, color),
-        buildArrowHead(dx2, dy2, angle, 9, color)
+        buildArrowHead(geom.dx1, geom.dy1, geom.angle + Math.PI, arrowSize, color),
+        buildArrowHead(geom.dx2, geom.dy2, geom.angle, arrowSize, color)
       );
     }
   }
 
-  // Upright readable text angle in [-90, 90]
-  let deg = (angle * 180) / Math.PI;
-  if (deg > 90) deg -= 180;
-  if (deg < -90) deg += 180;
-
-  const midX = (dx1 + dx2) / 2;
-  const midY = (dy1 + dy2) / 2;
-  const textOffset = cfg?.textPosition === 'center' ? 0 : 12;
-  // Always nudge text slightly above visual line
-  const radUpright = (deg * Math.PI) / 180;
-  const tx = midX + Math.sin(radUpright) * textOffset;
-  const ty = midY - Math.cos(radUpright) * textOffset;
-
-  const label = formatDimensionValue(pxLen, options?.pageUnit || 'px', cfg);
+  const label = formatDimensionValue(geom.pxLen, options?.pageUnit || 'px', { unit, precision, showUnit });
   const text = new fabric.IText(label, {
-    left: tx,
-    top: ty,
+    left: geom.textX,
+    top: geom.textY,
     originX: 'center',
     originY: 'center',
-    angle: deg,
-    fontSize: 12,
-    fontFamily: 'Montserrat',
-    fontWeight: 'bold',
-    fill: '#0f172a',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    angle: geom.textDeg,
+    fontSize,
+    fontFamily,
+    fontWeight: fontWeight as any,
+    fontStyle: fontStyle as any,
+    underline,
+    fill: textColor,
+    backgroundColor: textBackgroundColor,
+    padding: 2,
+    objectCaching: false,
   });
+  (text as any).isDimensionText = true;
   items.push(text);
 
-  const group = new fabric.Group(items, { subTargetCheck: true });
+  const group = new fabric.Group(items, { subTargetCheck: true, objectCaching: false });
+  const center = group.getCenterPoint();
+  const dimData: DimensionData = {
+    kind: options?.kind || 'parallel',
+    x1,
+    y1,
+    x2,
+    y2,
+    offset,
+    precision,
+    unit,
+    showUnit,
+    style,
+    textPosition,
+    strokeColor: color,
+    textColor,
+    fontSize,
+    fontFamily,
+    fontWeight,
+    fontStyle,
+    underline,
+    textBackgroundColor,
+    origCenterX: center.x,
+    origCenterY: center.y,
+  };
   (group as any).isDimension = true;
-  (group as any).dimensionKind = options?.kind || 'parallel';
+  (group as any).dimensionKind = dimData.kind;
+  (group as any).dimensionData = dimData;
   ensureObjectId(
     group,
     `${options?.kind === 'segment' ? 'Segment' : 'Parallel'} Dimension (${label})`
@@ -298,157 +467,107 @@ export function createHVDimensionObject(
   y2: number,
   options?: {
     pageUnit?: UnitType;
-    config?: DimensionConfig;
+    config?: Partial<DimensionConfig>;
     strokeColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    underline?: boolean;
+    textBackgroundColor?: string;
+    placePt?: { x: number; y: number };
   }
 ): fabric.Group {
-  const dx = Math.abs(x2 - x1);
-  const dy = Math.abs(y2 - y1);
-  const isHorizontal = dx >= dy;
-  const color = options?.strokeColor || '#1e293b';
   const cfg = options?.config;
+  const color = options?.strokeColor || cfg?.strokeColor || '#1e293b';
+  const textColor = options?.textColor || cfg?.textColor || '#0f172a';
+  const fontSize = options?.fontSize || cfg?.fontSize || 13;
+  const fontFamily = options?.fontFamily || cfg?.fontFamily || 'Montserrat';
+  const fontWeight = options?.fontWeight || cfg?.fontWeight || 'bold';
+  const fontStyle = options?.fontStyle || cfg?.fontStyle || 'normal';
+  const underline = !!options?.underline;
+  const textBackgroundColor = options?.textBackgroundColor || 'rgba(255,255,255,0.9)';
   const style = cfg?.style || 'arrows';
+  const textPosition = cfg?.textPosition || 'above';
+  const unit = cfg?.unit || 'auto';
+  const precision = cfg?.precision !== undefined ? cfg.precision : 2;
+  const showUnit = cfg?.showUnit !== false;
 
-  const items: fabric.FabricObject[] = [];
-  let pxLen = 0;
+  const geom = computeHVDimensionGeometry(x1, y1, x2, y2, options?.placePt, textPosition, fontSize);
+  const items: fabric.FabricObject[] = [
+    new fabric.Line(geom.ext1, { stroke: color, strokeWidth: 1.2, strokeUniform: true, objectCaching: false }),
+    new fabric.Line(geom.ext2, { stroke: color, strokeWidth: 1.2, strokeUniform: true, objectCaching: false }),
+    new fabric.Line(geom.dimLine, { stroke: color, strokeWidth: 1.6, strokeUniform: true, objectCaching: false }),
+  ];
 
-  if (isHorizontal) {
-    pxLen = dx;
-    const dimY = y2;
-    const extSign = dimY >= y1 ? 1 : -1;
-    // Extension lines from measured points to dimension line y = dimY
-    if (Math.abs(dimY - y1) > 2) {
-      items.push(
-        new fabric.Line([x1, y1 + 3 * extSign, x1, dimY + 5 * extSign], {
-          stroke: color,
-          strokeWidth: 1.1,
-          strokeUniform: true,
-        })
-      );
+  const [lx1, ly1, lx2, ly2] = geom.dimLine;
+  if (geom.pxLen > 6) {
+    const arrowSize = geom.pxLen < 28 ? Math.max(5.5, geom.pxLen * 0.3) : 11;
+    if (style === 'ticks') {
+      items.push(buildTickCap(lx1, ly1, geom.dirAngle, 11, color), buildTickCap(lx2, ly2, geom.dirAngle, 11, color));
     } else {
       items.push(
-        new fabric.Line([x1, dimY - 7, x1, dimY + 7], {
-          stroke: color,
-          strokeWidth: 1.4,
-          strokeUniform: true,
-        })
+        buildArrowHead(lx1, ly1, geom.dirAngle + Math.PI, arrowSize, color),
+        buildArrowHead(lx2, ly2, geom.dirAngle, arrowSize, color)
       );
     }
-    items.push(
-      new fabric.Line([x2, dimY - 7, x2, dimY + 7], {
-        stroke: color,
-        strokeWidth: 1.4,
-        strokeUniform: true,
-      }),
-      new fabric.Line([x1, dimY, x2, dimY], {
-        stroke: color,
-        strokeWidth: 1.6,
-        strokeUniform: true,
-      })
-    );
-
-    if (pxLen > 8) {
-      const dir = x2 >= x1 ? 0 : Math.PI;
-      if (style === 'ticks') {
-        items.push(buildTickCap(x1, dimY, dir, 10, color), buildTickCap(x2, dimY, dir, 10, color));
-      } else {
-        items.push(
-          buildArrowHead(x1, dimY, dir + Math.PI, 9, color),
-          buildArrowHead(x2, dimY, dir, 9, color)
-        );
-      }
-    }
-
-    const label = formatDimensionValue(pxLen, options?.pageUnit || 'px', cfg);
-    const ty = cfg?.textPosition === 'center' ? dimY : dimY - 12;
-    items.push(
-      new fabric.IText(label, {
-        left: (x1 + x2) / 2,
-        top: ty,
-        originX: 'center',
-        originY: 'center',
-        fontSize: 12,
-        fontFamily: 'Montserrat',
-        fontWeight: 'bold',
-        fill: '#0f172a',
-        backgroundColor: 'rgba(255,255,255,0.9)',
-      })
-    );
-
-    const group = new fabric.Group(items, { subTargetCheck: true });
-    (group as any).isDimension = true;
-    (group as any).dimensionKind = 'horizontal';
-    ensureObjectId(group, `Horizontal Dimension (${label})`);
-    return group;
-  } else {
-    pxLen = dy;
-    const dimX = x2;
-    const extSign = dimX >= x1 ? 1 : -1;
-    if (Math.abs(dimX - x1) > 2) {
-      items.push(
-        new fabric.Line([x1 + 3 * extSign, y1, dimX + 5 * extSign, y1], {
-          stroke: color,
-          strokeWidth: 1.1,
-          strokeUniform: true,
-        })
-      );
-    } else {
-      items.push(
-        new fabric.Line([dimX - 7, y1, dimX + 7, y1], {
-          stroke: color,
-          strokeWidth: 1.4,
-          strokeUniform: true,
-        })
-      );
-    }
-    items.push(
-      new fabric.Line([dimX - 7, y2, dimX + 7, y2], {
-        stroke: color,
-        strokeWidth: 1.4,
-        strokeUniform: true,
-      }),
-      new fabric.Line([dimX, y1, dimX, y2], {
-        stroke: color,
-        strokeWidth: 1.6,
-        strokeUniform: true,
-      })
-    );
-
-    if (pxLen > 8) {
-      const dir = y2 >= y1 ? Math.PI / 2 : -Math.PI / 2;
-      if (style === 'ticks') {
-        items.push(buildTickCap(dimX, y1, dir, 10, color), buildTickCap(dimX, y2, dir, 10, color));
-      } else {
-        items.push(
-          buildArrowHead(dimX, y1, dir + Math.PI, 9, color),
-          buildArrowHead(dimX, y2, dir, 9, color)
-        );
-      }
-    }
-
-    const label = formatDimensionValue(pxLen, options?.pageUnit || 'px', cfg);
-    const tx = cfg?.textPosition === 'center' ? dimX : dimX - 12;
-    items.push(
-      new fabric.IText(label, {
-        left: tx,
-        top: (y1 + y2) / 2,
-        originX: 'center',
-        originY: 'center',
-        angle: -90,
-        fontSize: 12,
-        fontFamily: 'Montserrat',
-        fontWeight: 'bold',
-        fill: '#0f172a',
-        backgroundColor: 'rgba(255,255,255,0.9)',
-      })
-    );
-
-    const group = new fabric.Group(items, { subTargetCheck: true });
-    (group as any).isDimension = true;
-    (group as any).dimensionKind = 'vertical';
-    ensureObjectId(group, `Vertical Dimension (${label})`);
-    return group;
   }
+
+  const label = formatDimensionValue(geom.pxLen, options?.pageUnit || 'px', { unit, precision, showUnit });
+  const text = new fabric.IText(label, {
+    left: geom.textX,
+    top: geom.textY,
+    originX: 'center',
+    originY: 'center',
+    angle: geom.textDeg,
+    fontSize,
+    fontFamily,
+    fontWeight: fontWeight as any,
+    fontStyle: fontStyle as any,
+    underline,
+    fill: textColor,
+    backgroundColor: textBackgroundColor,
+    padding: 2,
+    objectCaching: false,
+  });
+  (text as any).isDimensionText = true;
+  items.push(text);
+
+  const group = new fabric.Group(items, { subTargetCheck: true, objectCaching: false });
+  const center = group.getCenterPoint();
+  const dimData: DimensionData = {
+    kind: geom.orientation,
+    x1,
+    y1,
+    x2,
+    y2,
+    placeX: options?.placePt ? options.placePt.x : x2,
+    placeY: options?.placePt ? options.placePt.y : y2,
+    precision,
+    unit,
+    showUnit,
+    style,
+    textPosition,
+    strokeColor: color,
+    textColor,
+    fontSize,
+    fontFamily,
+    fontWeight,
+    fontStyle,
+    underline,
+    textBackgroundColor,
+    origCenterX: center.x,
+    origCenterY: center.y,
+  };
+  (group as any).isDimension = true;
+  (group as any).dimensionKind = geom.orientation;
+  (group as any).dimensionData = dimData;
+  ensureObjectId(
+    group,
+    `${geom.orientation === 'horizontal' ? 'Horizontal' : 'Vertical'} Dimension (${label})`
+  );
+  return group;
 }
 
 export function createAngularDimensionObject(
@@ -459,12 +578,29 @@ export function createAngularDimensionObject(
   p2x: number,
   p2y: number,
   options?: {
-    config?: DimensionConfig;
+    config?: Partial<DimensionConfig>;
     strokeColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    underline?: boolean;
+    textBackgroundColor?: string;
   }
 ): fabric.Group {
-  const color = options?.strokeColor || '#1e293b';
   const cfg = options?.config;
+  const color = options?.strokeColor || cfg?.strokeColor || '#1e293b';
+  const textColor = options?.textColor || cfg?.textColor || '#0f172a';
+  const fontSize = options?.fontSize || cfg?.fontSize || 13;
+  const fontFamily = options?.fontFamily || cfg?.fontFamily || 'Montserrat';
+  const fontWeight = options?.fontWeight || cfg?.fontWeight || 'bold';
+  const fontStyle = options?.fontStyle || cfg?.fontStyle || 'normal';
+  const underline = !!options?.underline;
+  const textBackgroundColor = options?.textBackgroundColor || 'rgba(255,255,255,0.92)';
+  const textPosition = cfg?.textPosition || 'above';
+  const precision = cfg?.precision !== undefined ? cfg.precision : 1;
+
   const r1 = Math.hypot(p1x - vx, p1y - vy);
   const r2 = Math.hypot(p2x - vx, p2y - vy);
   const a1 = Math.atan2(p1y - vy, p1x - vx);
@@ -476,8 +612,7 @@ export function createAngularDimensionObject(
   while (delta < -Math.PI) delta += Math.PI * 2;
 
   const degAbs = (Math.abs(delta) * 180) / Math.PI;
-  const precision = cfg?.precision !== undefined ? Math.min(2, cfg.precision) : 1;
-  const label = `${degAbs.toFixed(precision)}°`;
+  const label = `${degAbs.toFixed(Math.min(2, precision))}°`;
 
   const arcRadius = Math.max(24, Math.min(160, Math.min(r1 || 60, r2 || 60) * 0.72));
   const arcStartX = vx + Math.cos(a1) * arcRadius;
@@ -487,20 +622,20 @@ export function createAngularDimensionObject(
   const sweepFlag = delta >= 0 ? 1 : 0;
 
   const items: fabric.FabricObject[] = [
-    // Ray extension lines
     new fabric.Line([vx, vy, p1x, p1y], {
       stroke: color,
       strokeWidth: 1.2,
       strokeDashArray: [4, 3],
       strokeUniform: true,
+      objectCaching: false,
     }),
     new fabric.Line([vx, vy, p2x, p2y], {
       stroke: color,
       strokeWidth: 1.2,
       strokeDashArray: [4, 3],
       strokeUniform: true,
+      objectCaching: false,
     }),
-    // Arc path
     new fabric.Path(
       `M ${arcStartX.toFixed(2)} ${arcStartY.toFixed(2)} A ${arcRadius.toFixed(2)} ${arcRadius.toFixed(2)} 0 0 ${sweepFlag} ${arcEndX.toFixed(2)} ${arcEndY.toFixed(2)}`,
       {
@@ -508,43 +643,73 @@ export function createAngularDimensionObject(
         stroke: color,
         strokeWidth: 1.8,
         strokeUniform: true,
+        objectCaching: false,
       }
     ),
   ];
 
-  // Tangent arrowheads on arc ends
   if (Math.abs(delta) > 0.08) {
     const tangentSign = delta >= 0 ? 1 : -1;
     const startTangent = a1 + tangentSign * (Math.PI / 2);
     const endTangent = a1 + delta + tangentSign * (Math.PI / 2);
     items.push(
-      buildArrowHead(arcStartX, arcStartY, startTangent + Math.PI, 8.5, color),
-      buildArrowHead(arcEndX, arcEndY, endTangent, 8.5, color)
+      buildArrowHead(arcStartX, arcStartY, startTangent + Math.PI, 10, color),
+      buildArrowHead(arcEndX, arcEndY, endTangent, 10, color)
     );
   }
 
   const midAngle = a1 + delta / 2;
-  const textDist = cfg?.textPosition === 'center' ? arcRadius : arcRadius + 14;
+  const textDist = textPosition === 'center' ? arcRadius : arcRadius + Math.max(14, fontSize * 0.9);
   const tx = vx + Math.cos(midAngle) * textDist;
   const ty = vy + Math.sin(midAngle) * textDist;
 
-  items.push(
-    new fabric.IText(label, {
-      left: tx,
-      top: ty,
-      originX: 'center',
-      originY: 'center',
-      fontSize: 12,
-      fontFamily: 'Montserrat',
-      fontWeight: 'bold',
-      fill: '#0f172a',
-      backgroundColor: 'rgba(255,255,255,0.92)',
-    })
-  );
+  const textObj = new fabric.IText(label, {
+    left: tx,
+    top: ty,
+    originX: 'center',
+    originY: 'center',
+    fontSize,
+    fontFamily,
+    fontWeight: fontWeight as any,
+    fontStyle: fontStyle as any,
+    underline,
+    fill: textColor,
+    backgroundColor: textBackgroundColor,
+    padding: 2,
+    objectCaching: false,
+  });
+  (textObj as any).isDimensionText = true;
+  items.push(textObj);
 
-  const group = new fabric.Group(items, { subTargetCheck: true });
+  const group = new fabric.Group(items, { subTargetCheck: true, objectCaching: false });
+  const center = group.getCenterPoint();
+  const dimData: DimensionData = {
+    kind: 'angular',
+    x1: p1x,
+    y1: p1y,
+    x2: p2x,
+    y2: p2y,
+    vx,
+    vy,
+    precision: precision as 0 | 1 | 2 | 3,
+    unit: cfg?.unit || 'auto',
+    showUnit: cfg?.showUnit !== false,
+    style: cfg?.style || 'arrows',
+    textPosition,
+    strokeColor: color,
+    textColor,
+    fontSize,
+    fontFamily,
+    fontWeight,
+    fontStyle,
+    underline,
+    textBackgroundColor,
+    origCenterX: center.x,
+    origCenterY: center.y,
+  };
   (group as any).isDimension = true;
   (group as any).dimensionKind = 'angular';
+  (group as any).dimensionData = dimData;
   ensureObjectId(group, `Angular Dimension (${label})`);
   return group;
 }
@@ -556,7 +721,16 @@ export function createCalloutObject(
   p2y: number,
   p3x: number,
   labelText: string = 'Callout',
-  strokeColor: string = '#1e293b'
+  strokeColor: string = '#1e293b',
+  textStyle?: {
+    textColor?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    underline?: boolean;
+    textBackgroundColor?: string;
+  }
 ): fabric.Group {
   const dirAngle = Math.atan2(p1y - p2y, p1x - p2x);
   const shoulderX = Math.abs(p3x - p2x) < 10 ? p2x + (p2x >= p1x ? 48 : -48) : p3x;
@@ -569,10 +743,18 @@ export function createCalloutObject(
       stroke: strokeColor,
       strokeWidth: 1.8,
       strokeUniform: true,
+      objectCaching: false,
     }
   );
 
-  const tipArrow = buildArrowHead(p1x, p1y, dirAngle, 9, strokeColor);
+  const tipArrow = buildArrowHead(p1x, p1y, dirAngle, 10, strokeColor);
+  const textColor = textStyle?.textColor || '#0f172a';
+  const fontSize = textStyle?.fontSize || 13;
+  const fontFamily = textStyle?.fontFamily || 'Montserrat';
+  const fontWeight = textStyle?.fontWeight || '600';
+  const fontStyle = textStyle?.fontStyle || 'normal';
+  const underline = !!textStyle?.underline;
+  const textBackgroundColor = textStyle?.textBackgroundColor || 'rgba(255,255,255,0.9)';
 
   const labelOffsetX = isRight ? shoulderX + 6 : shoulderX - 6;
   const text = new fabric.IText(labelText, {
@@ -580,19 +762,207 @@ export function createCalloutObject(
     top: p2y,
     originX: isRight ? 'left' : 'right',
     originY: 'center',
-    fontSize: 13,
-    fontFamily: 'Montserrat',
-    fontWeight: '600',
-    fill: '#0f172a',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    fontSize,
+    fontFamily,
+    fontWeight: fontWeight as any,
+    fontStyle: fontStyle as any,
+    underline,
+    fill: textColor,
+    backgroundColor: textBackgroundColor,
     padding: 2,
+    objectCaching: false,
   });
+  (text as any).isDimensionText = true;
 
-  const group = new fabric.Group([leaderPath, tipArrow, text], { subTargetCheck: true });
+  const group = new fabric.Group([leaderPath, tipArrow, text], { subTargetCheck: true, objectCaching: false });
+  const center = group.getCenterPoint();
+  const dimData: DimensionData = {
+    kind: 'callout',
+    x1: p1x,
+    y1: p1y,
+    x2: p2x,
+    y2: p2y,
+    p3x,
+    labelText,
+    precision: 2,
+    unit: 'auto',
+    showUnit: true,
+    style: 'arrows',
+    textPosition: 'above',
+    strokeColor,
+    textColor,
+    fontSize,
+    fontFamily,
+    fontWeight,
+    fontStyle,
+    underline,
+    textBackgroundColor,
+    origCenterX: center.x,
+    origCenterY: center.y,
+  };
   (group as any).isDimension = true;
   (group as any).dimensionKind = 'callout';
+  (group as any).dimensionData = dimData;
   ensureObjectId(group, `Callout (${labelText})`);
   return group;
+}
+
+export function updateDimensionGroup(
+  canvas: fabric.Canvas,
+  existingGroup: fabric.Group,
+  patch: Partial<DimensionData>,
+  pageUnit: UnitType
+): fabric.Group | null {
+  const existingData = (existingGroup as any).dimensionData as DimensionData | undefined;
+  if (!existingData) {
+    // Fallback for legacy dimension groups created without dimensionData: update child props in place
+    const children = typeof existingGroup.getObjects === 'function' ? existingGroup.getObjects() : [];
+    let touched = false;
+    for (const ch of children) {
+      if (ch.type === 'i-text' || ch.type === 'text') {
+        if (patch.fontSize !== undefined) { ch.set('fontSize', patch.fontSize); touched = true; }
+        if (patch.fontFamily !== undefined) { ch.set('fontFamily', patch.fontFamily); touched = true; }
+        if (patch.fontWeight !== undefined) { ch.set('fontWeight', patch.fontWeight as any); touched = true; }
+        if (patch.fontStyle !== undefined) { ch.set('fontStyle', patch.fontStyle as any); touched = true; }
+        if (patch.underline !== undefined) { ch.set('underline', patch.underline); touched = true; }
+        if (patch.textColor !== undefined) { ch.set('fill', patch.textColor); touched = true; }
+        if (patch.textBackgroundColor !== undefined) { ch.set('backgroundColor', patch.textBackgroundColor); touched = true; }
+      } else if (patch.strokeColor !== undefined) {
+        if (ch.type === 'polygon') ch.set('fill', patch.strokeColor);
+        else ch.set('stroke', patch.strokeColor);
+        touched = true;
+      }
+    }
+    if (touched) {
+      existingGroup.set('dirty', true);
+      existingGroup.setCoords();
+      canvas.requestRenderAll();
+    }
+    return existingGroup;
+  }
+
+  const curCenter = existingGroup.getCenterPoint();
+  const dx = existingData.origCenterX !== undefined ? curCenter.x - existingData.origCenterX : 0;
+  const dy = existingData.origCenterY !== undefined ? curCenter.y - existingData.origCenterY : 0;
+  const sx = existingGroup.scaleX || 1;
+  const sy = existingGroup.scaleY || 1;
+  const prevAngle = existingGroup.angle || 0;
+
+  const transformPt = (px: number, py: number) => {
+    const cx0 = existingData.origCenterX ?? curCenter.x;
+    const cy0 = existingData.origCenterY ?? curCenter.y;
+    return {
+      x: curCenter.x + (px - cx0) * sx + (existingData.origCenterX === undefined ? dx : 0),
+      y: curCenter.y + (py - cy0) * sy + (existingData.origCenterY === undefined ? dy : 0),
+    };
+  };
+
+  const p1 = transformPt(existingData.x1, existingData.y1);
+  const p2 = transformPt(existingData.x2, existingData.y2);
+  const merged: DimensionData = { ...existingData, ...patch };
+  const commonCfg: DimensionConfig = {
+    precision: merged.precision,
+    unit: merged.unit,
+    showUnit: merged.showUnit,
+    style: merged.style,
+    textPosition: merged.textPosition,
+    fontSize: merged.fontSize,
+    fontFamily: merged.fontFamily,
+    fontWeight: merged.fontWeight,
+    fontStyle: merged.fontStyle,
+    textColor: merged.textColor,
+    strokeColor: merged.strokeColor,
+  };
+
+  let rebuilt: fabric.Group;
+  if (merged.kind === 'horizontal' || merged.kind === 'vertical') {
+    const placePt =
+      merged.placeX !== undefined && merged.placeY !== undefined
+        ? transformPt(merged.placeX, merged.placeY)
+        : undefined;
+    rebuilt = createHVDimensionObject(p1.x, p1.y, p2.x, p2.y, {
+      pageUnit,
+      config: commonCfg,
+      strokeColor: merged.strokeColor,
+      textColor: merged.textColor,
+      fontSize: merged.fontSize,
+      fontFamily: merged.fontFamily,
+      fontWeight: merged.fontWeight,
+      fontStyle: merged.fontStyle,
+      underline: merged.underline,
+      textBackgroundColor: merged.textBackgroundColor,
+      placePt,
+    });
+  } else if (merged.kind === 'angular' && merged.vx !== undefined && merged.vy !== undefined) {
+    const v = transformPt(merged.vx, merged.vy);
+    rebuilt = createAngularDimensionObject(v.x, v.y, p1.x, p1.y, p2.x, p2.y, {
+      config: commonCfg,
+      strokeColor: merged.strokeColor,
+      textColor: merged.textColor,
+      fontSize: merged.fontSize,
+      fontFamily: merged.fontFamily,
+      fontWeight: merged.fontWeight,
+      fontStyle: merged.fontStyle,
+      underline: merged.underline,
+      textBackgroundColor: merged.textBackgroundColor,
+    });
+  } else if (merged.kind === 'callout' && merged.p3x !== undefined) {
+    const p3 = transformPt(merged.p3x, existingData.y2);
+    rebuilt = createCalloutObject(
+      p1.x,
+      p1.y,
+      p2.x,
+      p2.y,
+      p3.x,
+      merged.labelText || 'Callout',
+      merged.strokeColor,
+      {
+        textColor: merged.textColor,
+        fontSize: merged.fontSize,
+        fontFamily: merged.fontFamily,
+        fontWeight: merged.fontWeight,
+        fontStyle: merged.fontStyle,
+        underline: merged.underline,
+        textBackgroundColor: merged.textBackgroundColor,
+      }
+    );
+  } else {
+    rebuilt = createDimensionObject(p1.x, p1.y, p2.x, p2.y, {
+      pageUnit,
+      config: commonCfg,
+      offset: (merged.offset || 0) * ((Math.abs(sx) + Math.abs(sy)) / 2),
+      kind: merged.kind === 'segment' ? 'segment' : 'parallel',
+      strokeColor: merged.strokeColor,
+      textColor: merged.textColor,
+      fontSize: merged.fontSize,
+      fontFamily: merged.fontFamily,
+      fontWeight: merged.fontWeight,
+      fontStyle: merged.fontStyle,
+      underline: merged.underline,
+      textBackgroundColor: merged.textBackgroundColor,
+    });
+  }
+
+  // Preserve stacking order, ID, rotation, opacity, and PowerClip membership
+  const stackIdx = canvas.getObjects().indexOf(existingGroup);
+  (rebuilt as any).id = (existingGroup as any).id;
+  if ((existingGroup as any).isPowerClipContent) {
+    (rebuilt as any).isPowerClipContent = true;
+  }
+  if (prevAngle !== 0) {
+    rebuilt.rotate(prevAngle);
+  }
+  rebuilt.set('opacity', existingGroup.opacity ?? 1);
+  canvas.remove(existingGroup);
+  if (stackIdx >= 0) {
+    canvas.insertAt(Math.min(stackIdx, canvas.getObjects().length), rebuilt);
+  } else {
+    canvas.add(rebuilt);
+  }
+  rebuilt.setCoords();
+  canvas.setActiveObject(rebuilt);
+  canvas.requestRenderAll();
+  return rebuilt;
 }
 
 export interface ObjectSegmentHit {
@@ -731,10 +1101,18 @@ export function findNearestObjectSegment(
   return best;
 }
 
-export function createConnectorObject(x1: number, y1: number, x2: number, y2: number): fabric.Group {
+export function createConnectorObject(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  strokeWidth: number = 0.25,
+  strokeColor: string = '#334155'
+): fabric.Group {
   const line = new fabric.Line([x1, y1, x2, y2], {
-    stroke: '#334155',
-    strokeWidth: 2,
+    stroke: strokeColor,
+    strokeWidth,
+    strokeUniform: true,
   });
 
   const startNode = new fabric.Rect({
@@ -744,7 +1122,8 @@ export function createConnectorObject(x1: number, y1: number, x2: number, y2: nu
     height: 8,
     fill: '#f97316',
     stroke: '#1e293b',
-    strokeWidth: 1.5,
+    strokeWidth: 1,
+    strokeUniform: true,
   });
 
   const endNode = new fabric.Rect({
@@ -754,10 +1133,13 @@ export function createConnectorObject(x1: number, y1: number, x2: number, y2: nu
     height: 8,
     fill: '#f97316',
     stroke: '#1e293b',
-    strokeWidth: 1.5,
+    strokeWidth: 1,
+    strokeUniform: true,
   });
 
   const group = new fabric.Group([line, startNode, endNode]);
+  (group as any).isConnector = true;
+  group.set({ stroke: strokeColor, strokeWidth });
   ensureObjectId(group, 'Connector Line');
   return group;
 }

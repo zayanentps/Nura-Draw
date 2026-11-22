@@ -37,7 +37,7 @@ import {
   IconEyedropper,
   IconInteractiveFill,
   IconGear,
-} from './CorelToolIcons';
+} from './NuraToolIcons';
 import { ToolType, ThemeMode } from '../types';
 import { Plus, ChevronsRight, QrCode } from 'lucide-react';
 
@@ -416,7 +416,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
                     {currentSubTool.icon}
                   </div>
 
-                  {/* Signature CorelDRAW Bottom-Right Flyout Triangle */}
+                  {/* Signature NuraDraw Bottom-Right Flyout Triangle */}
                   {group.subTools.length > 1 && (
                     <span
                       onClick={(e) => handleFlyoutArrowClick(e, group)}
@@ -431,7 +431,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
                 </button>
               </div>
 
-              {/* Horizontal Group Divider (Matches CorelDRAW toolbar dividers in screenshot) */}
+              {/* Horizontal Group Divider (Matches NuraDraw toolbar dividers in screenshot) */}
               {group.hasDividerAfter && (
                 <div className={`w-5 h-px my-0.5 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
               )}
@@ -478,7 +478,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
         {/* Divider before Settings */}
         <div className={`w-5 h-px my-1 ${isDark ? 'bg-[#646870]' : 'bg-zinc-300'}`} />
 
-        {/* CorelDRAW Options / Tools Cogwheel (Matches bottom of image_8930b229.png) */}
+        {/* NuraDraw Options / Tools Cogwheel (Matches bottom of image_8930b229.png) */}
         <div className="relative w-full flex justify-center">
           <button
             onClick={() => onOpenSettings?.()}
@@ -490,7 +490,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
             }`}
           >
             <IconGear className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-            {/* Signature CorelDRAW Flyout Triangle */}
+            {/* Signature NuraDraw Flyout Triangle */}
             <span
               className="absolute bottom-0 right-0 w-0 h-0 border-b-[4px] border-r-[4px] border-b-zinc-800 border-r-zinc-800 border-t-[4px] border-l-[4px] border-t-transparent border-l-transparent pointer-events-none"
             />

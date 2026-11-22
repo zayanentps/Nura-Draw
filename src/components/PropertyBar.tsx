@@ -212,7 +212,7 @@ export const PropertyBar: React.FC<PropertyBarProps> = ({
           </div>
         </div>
       ) : (
-        /* Object-Specific Properties (Dynamic Corel Contextual Inspector) */
+        /* Object-Specific Properties (Dynamic NuraDraw Contextual Inspector) */
         <div className="flex items-center gap-2.5 w-full">
           {/* Object Type Badge */}
           <div className="flex items-center gap-1 bg-zinc-800/90 text-emerald-400 px-2 py-0.5 rounded border border-zinc-600 text-[11px] font-semibold">

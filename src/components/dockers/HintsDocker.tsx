@@ -296,7 +296,7 @@ export const HintsDocker: React.FC<HintsDockerProps> = ({
 
       <div className="space-y-1.5 pt-2 border-t border-zinc-300/60 dark:border-zinc-700">
         <span className={`font-semibold text-[11px] uppercase tracking-wide ${isDark ? 'text-zinc-300' : 'text-zinc-500'}`}>
-          CorelDRAW Keyboard Shortcuts
+          NuraDraw Keyboard Shortcuts
         </span>
         <div className="grid grid-cols-1 gap-1 text-[10.5px]">
           {[
@@ -311,7 +311,7 @@ export const HintsDocker: React.FC<HintsDockerProps> = ({
             ['Ctrl + N / O / S / P', 'New / Open / Save / Print'],
             ['Ctrl + T', 'Format Text'],
             ['Ctrl + Z', 'Undo'],
-            ['F1 / F9', 'CorelDRAW Help / Full Screen'],
+            ['F1 / F9', 'NuraDraw Help / Full Screen'],
             ['F2 / F3 / F4', 'Zoom Tool / Zoom Out / Fit Window'],
             ['F5 / F6 / F7 / F8', 'Freehand / Rectangle / Ellipse / Text'],
             ['F10 / F11', 'Shape Tool / Fountain Fill'],

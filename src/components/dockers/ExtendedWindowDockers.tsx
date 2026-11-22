@@ -115,7 +115,7 @@ export const ExtendedWindowDockers: React.FC<ExtendedWindowDockersProps> = ({
   const [gapTolerance, setGapTolerance] = useState<number>(5);
 
   // Font Sampler state
-  const [sampleText, setSampleText] = useState<string>('CorelDRAW Design 123');
+  const [sampleText, setSampleText] = useState<string>('NuraDraw Design 123');
 
   // Color & Palette state
   const [activePalette, setActivePalette] = useState<string>('Default CMYK');

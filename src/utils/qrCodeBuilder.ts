@@ -43,7 +43,7 @@ export interface QrConfig {
 export const DEFAULT_QR_CONFIG: QrConfig = {
   dataType: 'url',
   url: 'https://example.com',
-  text: 'Hello from CorelDRAW Vector QR',
+  text: 'Hello from NuraDraw Vector QR',
   wifiSsid: 'MyNetwork',
   wifiPassword: '',
   wifiSecurity: 'WPA',

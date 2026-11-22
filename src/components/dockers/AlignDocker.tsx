@@ -104,7 +104,7 @@ export const AlignDocker: React.FC<AlignDockerProps> = ({
         </span>
       </div>
 
-      {/* Align To Target Selector (CorelDRAW Signature: Active Objects vs Page vs Key Object) */}
+      {/* Align To Target Selector (NuraDraw Signature: Active Objects vs Page vs Key Object) */}
       <div>
         <label className={`block text-[11px] font-semibold mb-1 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
           Align to:
@@ -243,7 +243,7 @@ export const AlignDocker: React.FC<AlignDockerProps> = ({
               ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/40'
               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-400'
           }`}
-          title="Center selection to Page (P in CorelDRAW)"
+          title="Center selection to Page (P in NuraDraw)"
         >
           <Maximize className="w-4 h-4" />
           <span>Center to Page (P)</span>

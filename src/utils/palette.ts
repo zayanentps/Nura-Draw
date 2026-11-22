@@ -1,6 +1,6 @@
 import { ColorSwatch } from '../types';
 
-export const CORELDRAW_PALETTE: ColorSwatch[] = [
+export const NURADRAW_PALETTE: ColorSwatch[] = [
   { name: 'None (Transparent)', hex: 'transparent', cmyk: 'None' },
   { name: '100% Black', hex: '#000000', cmyk: 'C0 M0 Y0 K100' },
   { name: '90% Black', hex: '#1c1c1c', cmyk: 'C0 M0 Y0 K90' },
@@ -15,7 +15,7 @@ export const CORELDRAW_PALETTE: ColorSwatch[] = [
   { name: 'White', hex: '#ffffff', cmyk: 'C0 M0 Y0 K0' },
   { name: 'Navy Blue', hex: '#1b1464', cmyk: 'C100 M100 Y0 K50' },
   { name: 'Process Cyan', hex: '#00aeef', cmyk: 'C100 M0 Y0 K0' },
-  { name: 'Corel Green', hex: '#00a651', cmyk: 'C100 M0 Y100 K0' },
+  { name: 'Nura Green', hex: '#00a651', cmyk: 'C100 M0 Y100 K0' },
   { name: 'Process Yellow', hex: '#fff200', cmyk: 'C0 M0 Y100 K0' },
   { name: 'Ruby Red', hex: '#ed1c24', cmyk: 'C0 M100 Y100 K0' },
   { name: 'Process Magenta', hex: '#ec008c', cmyk: 'C0 M100 Y0 K0' },

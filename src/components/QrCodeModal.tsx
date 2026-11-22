@@ -185,7 +185,7 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/55 backdrop-blur-xs flex items-center justify-center z-[120] select-none font-sans p-4">
       <div className={`w-[780px] max-w-[96vw] max-h-[92vh] rounded-sm border shadow-2xl flex flex-col overflow-hidden ${panelBg}`}>
-        {/* CorelDRAW Title Bar */}
+        {/* NuraDraw Title Bar */}
         <div
           className={`h-9 px-3.5 flex items-center justify-between border-b shrink-0 ${
             isDark ? 'bg-[#44474d] border-[#646870]' : 'bg-[#e6e8ec] border-[#c4c8cf]'

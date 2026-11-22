@@ -21,8 +21,8 @@ import {
 import * as fabric from 'fabric';
 import { PageConfig, ThemeMode } from '../types';
 import {
-  COREL_EXPORT_FORMATS,
-  CorelExportFormat,
+  NURADRAW_EXPORT_FORMATS,
+  NuraExportFormat,
   AdvancedExportSettings,
   DEFAULT_ADVANCED_EXPORT_SETTINGS,
   exportWithSettings,
@@ -65,7 +65,7 @@ const VIRTUAL_FOLDERS: FolderItem[] = [
   { id: 'documents', label: 'Documents', path: 'C:\\Users\\user\\Documents', icon: 'docs' },
   { id: 'downloads', label: 'Downloads', path: 'C:\\Users\\user\\Downloads', icon: 'downloads' },
   { id: 'pictures', label: 'Pictures', path: 'C:\\Users\\user\\Pictures', icon: 'pictures' },
-  { id: 'projects', label: 'Corel Projects', path: 'C:\\Users\\user\\Documents\\TraceDraw', icon: 'pc' },
+  { id: 'projects', label: 'NuraDraw Projects', path: 'C:\\Users\\user\\Documents\\TraceDraw', icon: 'pc' },
 ];
 
 const RECENT_EXPORTS_KEY = 'tracedraw_recent_exported_files_v1';
@@ -147,8 +147,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const allFolders = useMemo(() => [...VIRTUAL_FOLDERS, ...customFolders], [customFolders]);
 
-  const selectedFormat: CorelExportFormat = useMemo(
-    () => COREL_EXPORT_FORMATS.find((f) => f.id === selectedFormatId) || COREL_EXPORT_FORMATS[0],
+  const selectedFormat: NuraExportFormat = useMemo(
+    () => NURADRAW_EXPORT_FORMATS.find((f) => f.id === selectedFormatId) || NURADRAW_EXPORT_FORMATS[0],
     [selectedFormatId]
   );
 
@@ -174,8 +174,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
     const extLower = (defaultFormatExt || (isSaveMode ? 'ndr' : 'pdf')).toLowerCase();
     const matched =
-      COREL_EXPORT_FORMATS.find((f) => f.id === extLower || f.ext === extLower) ||
-      COREL_EXPORT_FORMATS[0];
+      NURADRAW_EXPORT_FORMATS.find((f) => f.id === extLower || f.ext === extLower) ||
+      NURADRAW_EXPORT_FORMATS[0];
     setSelectedFormatId(matched.id);
 
     setSettings((prev) => ({
@@ -185,7 +185,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       pageSizeMode: 'document',
     }));
 
-    // Auto-focus & select filename for quick rename just like CorelDRAW Save Drawing
+    // Auto-focus & select filename for quick rename just like NuraDraw Save Drawing
     setTimeout(() => {
       if (fileNameInputRef.current) {
         fileNameInputRef.current.focus();
@@ -421,8 +421,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     : 'bg-[#e1e1e1] border-[#adadad] hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-900';
   const fieldsetBorder = isDark ? 'border-[#646870]' : 'border-[#d0d0d0]';
 
-  const pinnedFormats = COREL_EXPORT_FORMATS.filter((f) => f.pinned);
-  const allOtherFormats = COREL_EXPORT_FORMATS.filter((f) => !f.pinned);
+  const pinnedFormats = NURADRAW_EXPORT_FORMATS.filter((f) => f.pinned);
+  const allOtherFormats = NURADRAW_EXPORT_FORMATS.filter((f) => !f.pinned);
 
   return (
     <div
@@ -430,7 +430,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       style={{ fontFamily: 'Segoe UI, Tahoma, sans-serif' }}
     >
       {step === 'location' ? (
-        /* ==================== STEP 1: CORELDRAW SAVE DRAWING / EXPORT LOCATION & RENAME DIALOG ==================== */
+        /* ==================== STEP 1: NURADRAW SAVE DRAWING / EXPORT LOCATION & RENAME DIALOG ==================== */
         <div className={`w-[740px] max-w-[96vw] border shadow-2xl text-[12px] ${winBg}`}>
           {/* Window Title Bar */}
           <div className={`h-8 px-3 flex items-center justify-between border-b ${winHeader}`}>
@@ -672,7 +672,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
-          {/* File Name, Save as Type & Corel Save Options */}
+          {/* File Name, Save as Type & NuraDraw Save Options */}
           <div className="px-4 py-3 space-y-2.5">
             {locationNotice && (
               <div className="px-2.5 py-1 text-[11px] rounded border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
@@ -918,7 +918,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
         </div>
       ) : (
-        /* ==================== STEP 2: CORELDRAW SETTINGS WINDOW (MATCHING 6 TABS + ISSUES) ==================== */
+        /* ==================== STEP 2: NURADRAW SETTINGS WINDOW (MATCHING 6 TABS + ISSUES) ==================== */
         <div className={`w-[580px] max-w-[95vw] border shadow-2xl text-[12px] ${winBg}`}>
           {/* Window Title Bar */}
           <div className={`h-8 px-3 flex items-center justify-between border-b ${winHeader}`}>

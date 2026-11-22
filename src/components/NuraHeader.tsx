@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { CollaboratorUser, PageConfig } from '../types';
 
-interface CorelHeaderProps {
+interface NuraHeaderProps {
   documentName: string;
   onDocumentNameChange: (name: string) => void;
   canUndo: boolean;
@@ -52,7 +52,7 @@ interface CorelHeaderProps {
   activeDockers: string[];
 }
 
-export const CorelHeader: React.FC<CorelHeaderProps> = ({
+export const NuraHeader: React.FC<NuraHeaderProps> = ({
   documentName,
   onDocumentNameChange,
   canUndo,
@@ -98,7 +98,7 @@ export const CorelHeader: React.FC<CorelHeaderProps> = ({
       {/* Top Application Title Bar & Main Menu */}
       <div className="flex items-center justify-between px-2 py-1 bg-[#1a1c1e] border-b border-zinc-800">
         <div className="flex items-center space-x-3">
-          {/* CorelDRAW Style Icon Brand */}
+          {/* NuraDraw Style Icon Brand */}
           <div className="flex items-center space-x-1.5 cursor-pointer" onClick={() => setActiveMenu(null)}>
             <div className="w-5 h-5 rounded bg-gradient-to-tr from-emerald-600 via-green-500 to-lime-400 flex items-center justify-center shadow-sm">
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-black font-black" fill="currentColor">
@@ -106,7 +106,7 @@ export const CorelHeader: React.FC<CorelHeaderProps> = ({
               </svg>
             </div>
             <span className="font-bold tracking-tight text-zinc-100 flex items-center gap-1 text-[13px]">
-              Corel<span className="text-emerald-400 font-extrabold">DRAW</span>
+              Nura<span className="text-emerald-400 font-extrabold">Draw</span>
               <span className="text-[10px] text-zinc-400 px-1 py-0.2 bg-zinc-800 rounded border border-zinc-700">Web</span>
             </span>
           </div>
@@ -151,12 +151,12 @@ export const CorelHeader: React.FC<CorelHeaderProps> = ({
                     <span className="text-[10px] text-zinc-400">Ctrl+N</span>
                   </button>
                   <button onClick={onOpenJSON} className="w-full text-left px-3 py-1.5 hover:bg-emerald-600 hover:text-white flex justify-between items-center">
-                    <span>Open Project (.corelweb)</span>
+                    <span>Open Project (.nuradraw)</span>
                     <span className="text-[10px] text-zinc-400">Ctrl+O</span>
                   </button>
                   <div className="h-px bg-zinc-700 my-1" />
                   <button onClick={() => onExport('json')} className="w-full text-left px-3 py-1.5 hover:bg-emerald-600 hover:text-white flex justify-between items-center">
-                    <span>Save Project (.corelweb)</span>
+                    <span>Save Project (.nuradraw)</span>
                     <span className="text-[10px] text-zinc-400">Ctrl+S</span>
                   </button>
                   <div className="h-px bg-zinc-700 my-1" />

@@ -13,15 +13,18 @@ import {
   CurveEditState,
   ViewQualityMode,
   DimensionConfig,
+  DimensionData,
   CropToolsConfig,
   CropActionType,
   CropRegion,
   ZoomPresetMode,
   SymmetryConfig,
   ParametricState,
+  SmartFillConfig,
 } from '../types';
 import { getSymmetryAxisLines } from '../utils/symmetryEngine';
 import { computeParametricOverlays } from '../utils/parametricEngine';
+import { smartFillAtPoint } from '../utils/smartFillEngine';
 import {
   ensureObjectId,
   disableObjectCaching,
@@ -33,6 +36,8 @@ import {
   createHVDimensionObject,
   createAngularDimensionObject,
   createCalloutObject,
+  computeParallelDimensionGeometry,
+  computeHVDimensionGeometry,
   findNearestObjectSegment,
   formatDimensionValue,
   createConnectorObject,
@@ -79,10 +84,68 @@ import {
 } from '../utils/curveEngine';
 import { socketService } from '../services/socketService';
 import { TopRuler, LeftRuler } from './Rulers';
-import { CorelContextMenu } from './CorelContextMenu';
+import { NuraContextMenu } from './NuraContextMenu';
 
 const EYEDROPPER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 4.5a2.12 2.12 0 0 1 0 3l-2.1 2.1 1.1 1.1-1.4 1.4-1.5-1.5-7.4 7.4c-.4.4-.9.7-1.4.8l-3 .7.7-3c.1-.5.4-1 .8-1.4l7.4-7.4-1.5-1.5 1.4-1.4 1.1 1.1 2.1-2.1a2.12 2.12 0 0 1 3 0Z" fill="#ffffff" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 7.5 16.5 10.5" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(EYEDROPPER_SVG)}") 2 21, crosshair`;
+
+const HAIRLINE_THRESHOLD_PT = 0.25;
+const HAIRLINE_MAX_SCREEN_PX = 0.6;
+
+function clampHairlineCtxLineWidth(instance: any, ctx: CanvasRenderingContext2D, rawSw: any) {
+  const sw = Number(rawSw);
+  if (!Number.isFinite(sw) || sw <= 0 || sw > HAIRLINE_THRESHOLD_PT) return;
+  const dpr =
+    typeof instance?.getCanvasRetinaScaling === 'function'
+      ? Math.max(1, instance.getCanvasRetinaScaling())
+      : 1;
+  const m = ctx.getTransform();
+  const sx = Math.hypot(m.a, m.b) / dpr;
+  const sy = Math.hypot(m.c, m.d) / dpr;
+  const screenScale = Math.max(0.001, (sx + sy) / 2);
+  ctx.lineWidth = Math.min(sw, HAIRLINE_MAX_SCREEN_PX / screenScale);
+}
+
+function installHairlineRenderPatch() {
+  const objProto = fabric.FabricObject.prototype as any;
+  if (!objProto.__hairlineStrokePatched) {
+    const origSetStrokeStyles = objProto._setStrokeStyles;
+    if (typeof origSetStrokeStyles === 'function') {
+      objProto._setStrokeStyles = function (ctx: CanvasRenderingContext2D, decl: any) {
+        origSetStrokeStyles.call(this, ctx, decl);
+        clampHairlineCtxLineWidth(this, ctx, decl?.strokeWidth);
+      };
+      objProto.__hairlineStrokePatched = true;
+    }
+  }
+  const textProto = fabric.FabricText.prototype as any;
+  if (!textProto.__hairlineStrokePatched) {
+    const origTextSetStrokeStyles = textProto._setStrokeStyles;
+    if (typeof origTextSetStrokeStyles === 'function') {
+      textProto._setStrokeStyles = function (ctx: CanvasRenderingContext2D, decl: any) {
+        const res = origTextSetStrokeStyles.call(this, ctx, decl);
+        clampHairlineCtxLineWidth(this, ctx, decl?.strokeWidth);
+        return res;
+      };
+      textProto.__hairlineStrokePatched = true;
+    }
+  }
+  const brushProto = fabric.BaseBrush.prototype as any;
+  if (!brushProto.__hairlineBrushPatched) {
+    const origSetBrushStyles = brushProto._setBrushStyles;
+    if (typeof origSetBrushStyles === 'function') {
+      brushProto._setBrushStyles = function (ctx: CanvasRenderingContext2D) {
+        origSetBrushStyles.call(this, ctx);
+        const bw = Number(this.width);
+        if (Number.isFinite(bw) && bw > 0 && bw <= HAIRLINE_THRESHOLD_PT) {
+          const zoom = Math.max(0.01, this.canvas?.getZoom?.() || 1);
+          ctx.lineWidth = Math.min(bw, HAIRLINE_MAX_SCREEN_PX / zoom);
+        }
+      };
+      brushProto.__hairlineBrushPatched = true;
+    }
+  }
+}
 
 function normalizeColorToHex(color: any): string | null {
   if (color === null || color === undefined || color === '' || color === 'none') {
@@ -545,7 +608,7 @@ function buildBSplinePathD(
   return d;
 }
 
-interface CorelCanvasProps {
+interface NuraCanvasProps {
   activeTool: ToolType;
   onSelectTool: (tool: ToolType) => void;
   pageConfig: PageConfig;
@@ -641,9 +704,11 @@ interface CorelCanvasProps {
   onDeleteDimConstraint?: (dimId: string) => void;
   onDeleteGeomConstraint?: (geomId: string) => void;
   onOpenParametersManager?: () => void;
+  smartFillConfig?: SmartFillConfig;
+  onNotifyToast?: (msg: string) => void;
 }
 
-export const CorelCanvas: React.FC<CorelCanvasProps> = ({
+export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   activeTool,
   onSelectTool,
   pageConfig,
@@ -741,6 +806,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   onDeleteDimConstraint,
   onDeleteGeomConstraint,
   onOpenParametersManager,
+  smartFillConfig,
+  onNotifyToast,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const deskRef = useRef<HTMLDivElement | null>(null);
@@ -786,6 +853,10 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   zoomLevelRef.current = zoomLevel;
   const activeToolRef = useRef<ToolType>(activeTool);
   activeToolRef.current = activeTool;
+  const smartFillConfigRef = useRef<SmartFillConfig | undefined>(smartFillConfig);
+  smartFillConfigRef.current = smartFillConfig;
+  const onNotifyToastRef = useRef(onNotifyToast);
+  onNotifyToastRef.current = onNotifyToast;
   const shiftKeyRef = useRef<boolean>(false);
 
   // Real-time loop prevention flag
@@ -797,11 +868,25 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   const lastDrawnPointRef = useRef<{ x: number; y: number } | null>(null);
   const activeTempShapeRef = useRef<fabric.FabricObject | null>(null);
 
-  // Multi-step Dimension tools (Angular Dimension & 3-Point Callout) + Live SVG Preview
+  // Multi-step Dimension tools (Parallel, H/V, Segment, Angular Dimension & 3-Point Callout) + Live SVG Preview
+  const dimStepRef = useRef<{
+    tool: 'dimension' | 'hv_dimension' | 'segment_dimension';
+    p1: { x: number; y: number };
+    p2?: { x: number; y: number };
+    phase: 'p2' | 'place';
+    isDraggingP1P2?: boolean;
+  } | null>(null);
   const angularStepRef = useRef<{ vertex: { x: number; y: number }; p1?: { x: number; y: number } } | null>(null);
   const calloutStepRef = useRef<{ p1: { x: number; y: number }; p2?: { x: number; y: number } } | null>(null);
   const [dimOverlay, setDimOverlay] = useState<
-    | { kind: 'hv'; x1: number; y1: number; x2: number; y2: number }
+    | {
+        kind: 'linear_preview';
+        tool: 'dimension' | 'hv_dimension' | 'segment_dimension';
+        phase: 'p2' | 'place';
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        cursor: { x: number; y: number };
+      }
     | { kind: 'angular'; vx: number; vy: number; p1?: { x: number; y: number }; cursor: { x: number; y: number } }
     | { kind: 'segment'; x1: number; y1: number; x2: number; y2: number; label: string }
     | { kind: 'callout'; p1: { x: number; y: number }; p2?: { x: number; y: number }; cursor: { x: number; y: number } }
@@ -842,6 +927,97 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   const [eraserTrailPreview, setEraserTrailPreview] = useState<{ x: number; y: number }[] | null>(null);
   const [eraserCursorPt, setEraserCursorPt] = useState<{ x: number; y: number } | null>(null);
 
+  // Interactive Transparency Tool temporary floating percentage box below target object
+  interface TransparencyPopupState {
+    target: fabric.FabricObject;
+    label: string;
+    initialOpacity: number;
+    transparencyPct: number;
+  }
+  const [transparencyPopup, setTransparencyPopup] = useState<TransparencyPopupState | null>(null);
+  const transparencyPopupRef = useRef<TransparencyPopupState | null>(null);
+  transparencyPopupRef.current = transparencyPopup;
+
+  const setTargetOpacityLive = useCallback(
+    (target: fabric.FabricObject, opacityVal: number) => {
+      const clampedOp = Math.max(0, Math.min(1, Number(opacityVal.toFixed(3))));
+      if (target.type === 'activeselection') {
+        (target as fabric.ActiveSelection).forEachObject((child) => {
+          child.set('opacity', clampedOp);
+        });
+      }
+      target.set('opacity', clampedOp);
+      onUpdateProperties({ opacity: clampedOp });
+      fabricRef.current?.requestRenderAll();
+    },
+    [onUpdateProperties]
+  );
+
+  const openTransparencyPopupForTarget = useCallback(
+    (target: fabric.FabricObject) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const curOp = Math.max(0, Math.min(1, target.opacity ?? 1));
+      const pct = Math.round((1 - curOp) * 100);
+      const label = target.type === 'activeselection' ? 'Multiple Objects' : getObjectLabel(target);
+      target.set({
+        selectable: false,
+        hasControls: false,
+        hasBorders: true,
+      });
+      canvas.setActiveObject(target);
+      onSelectionChange(target);
+      onUpdateProperties({ opacity: curOp });
+      canvas.requestRenderAll();
+      setTransparencyPopup({
+        target,
+        label,
+        initialOpacity: curOp,
+        transparencyPct: pct,
+      });
+    },
+    [onSelectionChange, onUpdateProperties]
+  );
+
+  const applyTransparencyPercentage = useCallback(
+    (pct: number) => {
+      const cur = transparencyPopupRef.current;
+      if (!cur) return;
+      const clampedPct = Math.max(0, Math.min(100, Math.round(pct)));
+      const newOp = Number((1 - clampedPct / 100).toFixed(3));
+      setTargetOpacityLive(cur.target, newOp);
+      setTransparencyPopup((prev) =>
+        prev ? { ...prev, transparencyPct: clampedPct } : null
+      );
+    },
+    [setTargetOpacityLive]
+  );
+
+  const commitAndCloseTransparencyPopup = useCallback(
+    (switchToPick: boolean = false) => {
+      const cur = transparencyPopupRef.current;
+      if (!cur) return;
+      const canvas = fabricRef.current;
+      const finalOp = Math.max(0, Math.min(1, cur.target.opacity ?? 1));
+      if (canvas && Math.abs(finalOp - cur.initialOpacity) > 0.001) {
+        onCanvasModified?.();
+        socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+      }
+      setTransparencyPopup(null);
+      if (switchToPick) {
+        onSelectTool('pick');
+      }
+    },
+    [onCanvasModified, onSelectTool]
+  );
+
+  const cancelTransparencyPopup = useCallback(() => {
+    const cur = transparencyPopupRef.current;
+    if (!cur) return;
+    setTargetOpacityLive(cur.target, cur.initialOpacity);
+    setTransparencyPopup(null);
+  }, [setTargetOpacityLive]);
+
   // Panning with hand or middle mouse
   const isPanningRef = useRef<boolean>(false);
   const lastPanPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -850,7 +1026,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   const grabbedPointRef = useRef<GrabbedPointInfo | null>(null);
   const dragOriginRef = useRef<{ left: number; top: number; baseX: number; baseY: number } | null>(null);
 
-  // CorelDRAW Shape Tool (F10) Curve Node / Handle / Segment Editing Refs & Overlay State
+  // NuraDraw Shape Tool (F10) Curve Node / Handle / Segment Editing Refs & Overlay State
   const activeCurvePathRef = useRef<fabric.Path | null>(null);
   const curveDataRef = useRef<EditableCurveData | null>(null);
   const selectedNodeIndicesRef = useRef<number[]>([]);
@@ -966,6 +1142,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
   useEffect(() => {
     if (!canvasElementRef.current) return;
 
+    installHairlineRenderPatch();
+
     const initialWidth = deskRef.current?.clientWidth || Math.max(pageConfig.width + 400, 1600);
     const initialHeight = deskRef.current?.clientHeight || Math.max(pageConfig.height + 400, 1200);
 
@@ -1023,7 +1201,51 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             height: Math.round((active.height || 0) * (active.scaleY || 1)),
             angle: Math.round(active.angle || 0),
           });
+        } else if ((active as any).isDimension) {
+          const dimData = (active as any).dimensionData as DimensionData | undefined;
+          const children = typeof (active as any).getObjects === 'function' ? (active as any).getObjects() : [];
+          const textChild = children.find((c: any) => c.type === 'i-text' || c.type === 'text');
+          const lineChild = children.find((c: any) => c.type === 'line' || c.type === 'path');
+          onUpdateProperties({
+            x: active.left || 0,
+            y: active.top || 0,
+            width: (active.width || 0) * (active.scaleX || 1),
+            height: (active.height || 0) * (active.scaleY || 1),
+            angle: active.angle || 0,
+            fill:
+              dimData?.textColor ||
+              (textChild && typeof textChild.fill === 'string' ? textChild.fill : '#0f172a'),
+            stroke:
+              dimData?.strokeColor ||
+              (lineChild && typeof lineChild.stroke === 'string' ? lineChild.stroke : '#1e293b'),
+            strokeWidth: lineChild?.strokeWidth || 1.6,
+            opacity: active.opacity !== undefined ? active.opacity : 1,
+            rx: 0,
+            ry: 0,
+            fontFamily: dimData?.fontFamily || textChild?.fontFamily || 'Montserrat',
+            fontSize: dimData?.fontSize || textChild?.fontSize || 13,
+            fontWeight: String(dimData?.fontWeight || textChild?.fontWeight || 'bold'),
+            fontStyle: String(dimData?.fontStyle || textChild?.fontStyle || 'normal'),
+            underline: !!(dimData?.underline ?? textChild?.underline),
+            linethrough: false,
+            textAlign: 'center',
+            charSpacing: 0,
+            lineHeight: 1.16,
+            textBackgroundColor:
+              dimData?.textBackgroundColor ||
+              (typeof textChild?.backgroundColor === 'string'
+                ? textChild.backgroundColor
+                : 'rgba(255,255,255,0.9)'),
+          });
         } else {
+          const isTextObj =
+            active.type === 'i-text' || active.type === 'text' || active.type === 'textbox';
+          const resolvedSw =
+            active.strokeWidth !== undefined
+              ? active.strokeWidth
+              : isTextObj
+              ? 0
+              : 0.25;
           onUpdateProperties({
             x: active.left || 0,
             y: active.top || 0,
@@ -1032,7 +1254,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             angle: active.angle || 0,
             fill: typeof active.fill === 'string' ? active.fill : '#00a651',
             stroke: typeof active.stroke === 'string' ? active.stroke : '#000000',
-            strokeWidth: active.strokeWidth || 1,
+            ...(isTextObj && !resolvedSw ? {} : { strokeWidth: resolvedSw }),
             opacity: active.opacity !== undefined ? active.opacity : 1,
             rx: (active as any).rx || 0,
             ry: (active as any).ry || 0,
@@ -1097,6 +1319,13 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
     });
     canvas.on('object:removed', () => {
       onObjectsCountChange?.(canvas.getObjects().length);
+    });
+    canvas.on('path:created', (e: any) => {
+      if (e?.path) {
+        e.path.set({ strokeUniform: true });
+        e.path.setCoords();
+        canvas.requestRenderAll();
+      }
     });
 
     // Non-destructive View Quality / Overprint / Rasterize render hooks
@@ -1210,7 +1439,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
     canvas.requestRenderAll();
   }, [theme]);
 
-  // Mouse cursor-centered Zoom In & Zoom Out on wheel scroll (CorelDRAW behavior)
+  // Mouse cursor-centered Zoom In & Zoom Out on wheel scroll (NuraDraw behavior)
   useEffect(() => {
     const desk = deskRef.current;
     if (!desk) return;
@@ -1309,6 +1538,9 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       setLine2pPreview(null);
     }
 
+    if (!['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool)) {
+      dimStepRef.current = null;
+    }
     if (activeTool !== 'angular_dimension') {
       angularStepRef.current = null;
     }
@@ -1335,17 +1567,24 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       setEraserCursorPt(null);
     }
     setCadHud(null);
+    if (activeTool !== 'transparency' && transparencyPopupRef.current) {
+      commitAndCloseTransparencyPopup(false);
+    }
 
     canvas.isDrawingMode = activeTool === 'freehand' || activeTool === 'artistic_media';
 
     if (activeTool === 'freehand') {
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
       canvas.freeDrawingBrush.color = currentStroke || '#000000';
-      canvas.freeDrawingBrush.width = properties.strokeWidth || 2;
+      canvas.freeDrawingBrush.width =
+        properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25;
     } else if (activeTool === 'artistic_media') {
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
       canvas.freeDrawingBrush.color = currentStroke || '#1e293b';
-      canvas.freeDrawingBrush.width = Math.max(6, (properties.strokeWidth || 2) * 4);
+      canvas.freeDrawingBrush.width = Math.max(
+        6,
+        (properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25) * 4
+      );
     }
 
     if (powerClipPicking || fitTextPicking) {
@@ -1452,12 +1691,20 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       syncCurveOverlay(null);
       canvas.selection = false;
       canvas.defaultCursor = 'crosshair';
-      canvas.discardActiveObject();
+      const preSelected = activeTool === 'transparency' ? canvas.getActiveObject() : null;
       canvas.forEachObject((obj) => {
         obj.selectable = false;
         obj.evented = true; // object-modifying tools click existing objects
       });
-      canvas.requestRenderAll();
+      if (activeTool === 'transparency' && preSelected && !(preSelected as any).isDimension) {
+        openTransparencyPopupForTarget(preSelected);
+      } else {
+        canvas.discardActiveObject();
+        if (activeTool === 'transparency') {
+          setTransparencyPopup(null);
+        }
+        canvas.requestRenderAll();
+      }
     } else if (activeTool === 'text') {
       syncCurveOverlay(null);
       canvas.selection = false;
@@ -1480,9 +1727,9 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       });
       canvas.requestRenderAll();
     }
-  }, [activeTool, currentStroke, properties.strokeWidth, powerClipPicking, fitTextPicking, syncCurveOverlay]);
+  }, [activeTool, currentStroke, properties.strokeWidth, powerClipPicking, fitTextPicking, syncCurveOverlay, commitAndCloseTransparencyPopup, openTransparencyPopupForTarget]);
 
-  // Register CorelDRAW Shape Tool Property Bar action handler
+  // Register NuraDraw Shape Tool Property Bar action handler
   useEffect(() => {
     if (!onRegisterCurveActionHandler) return;
     onRegisterCurveActionHandler((action: CurveActionType) => {
@@ -1909,7 +2156,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             }
           }
 
-          // 3. Hit-test Curve / Line Segments (Direct CorelDRAW segment bending)
+          // 3. Hit-test Curve / Line Segments (Direct NuraDraw segment bending)
           const segHit = findClosestSegmentHit(curData, pointer.x, pointer.y, hitTol);
           if (segHit) {
             selectedNodeIndicesRef.current = [];
@@ -2040,8 +2287,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           lineHeight: properties.lineHeight || 1.16,
           textBackgroundColor: properties.textBackgroundColor || 'transparent',
           fill: currentFill === 'transparent' ? '#000000' : currentFill,
-          stroke: currentStroke || undefined,
-          strokeWidth: properties.strokeWidth || 0,
+          stroke: undefined,
+          strokeWidth: 0,
         });
         ensureObjectId(iText, 'Artistic Text');
         if (isPowerClipEditing) {
@@ -2096,7 +2343,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           const pathObj = new fabric.Path(d, {
             fill: 'transparent',
             stroke: currentStroke || '#000000',
-            strokeWidth: properties.strokeWidth || 2,
+            strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
             strokeUniform: true,
             selectable: true,
           });
@@ -2136,7 +2383,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           const closedPath = new fabric.Path(finalD, {
             fill: currentFill,
             stroke: currentStroke || '#000000',
-            strokeWidth: properties.strokeWidth || 2,
+            strokeWidth: properties.strokeWidth ?? 0.25,
             strokeUniform: true,
             selectable: true,
           });
@@ -2208,7 +2455,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           const pathObj = new fabric.Path(pathStr, {
             fill: 'transparent',
             stroke: currentStroke || '#000000',
-            strokeWidth: properties.strokeWidth || 2,
+            strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
             strokeUniform: true,
             selectable: true,
           });
@@ -2289,7 +2536,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         lastDrawnPointRef.current = startPt;
 
         let newShape: fabric.FabricObject;
-        const sw = properties.strokeWidth || 1;
+        const sw = properties.strokeWidth ?? 0.25;
 
         if (activeTool === 'rectangle' || activeTool === 'rect3p') {
           newShape = new fabric.Rect({
@@ -2460,8 +2707,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Segment Dimension Tool: Click any shape/line segment to immediately dimension it (or drag manually)
-      if (activeTool === 'segment_dimension') {
+      // Segment Dimension Tool: Click any shape/line edge -> move anywhere to place -> click to place (or 3-click manual)
+      if (activeTool === 'segment_dimension' && !dimStepRef.current) {
         const segHit = findNearestObjectSegment(
           canvas.getObjects(),
           pointer.x,
@@ -2470,24 +2717,28 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           16 / curZoom
         );
         if (segHit) {
-          const segDim = createDimensionObject(segHit.x1, segHit.y1, segHit.x2, segHit.y2, {
-            pageUnit: pageConfigRef.current.units,
-            config: dimensionConfigRef.current,
-            offset: 24,
-            kind: 'segment',
-            strokeColor: currentStroke || '#1e293b',
+          const p1 = { x: segHit.x1, y: segHit.y1 };
+          const p2 = { x: segHit.x2, y: segHit.y2 };
+          dimStepRef.current = {
+            tool: 'segment_dimension',
+            p1,
+            p2,
+            phase: 'place',
+            isDraggingP1P2: false,
+          };
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: 'segment_dimension',
+            phase: 'place',
+            p1,
+            p2,
+            cursor: pointer,
           });
-          if (isPowerClipEditing) {
-            (segDim as any).isPowerClipContent = true;
-          }
-          canvas.add(segDim);
-          canvas.setActiveObject(segDim);
-          setDimOverlay(null);
-          setCadHud(null);
-          canvas.requestRenderAll();
-          onSelectTool('pick');
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (segDim as any).id, segDim.toJSON());
-          onCanvasModified?.();
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: 'Move anywhere to place segment dimension & click',
+          });
           return;
         }
       }
@@ -2537,7 +2788,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         if (Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y) >= 1) {
           const lineObj = new fabric.Line([startPt.x, startPt.y, endPt.x, endPt.y], {
             stroke: currentStroke || '#000000',
-            strokeWidth: properties.strokeWidth || 2,
+            strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
             strokeUniform: true,
             objectCaching: false,
             originX: 'left',
@@ -2558,20 +2809,161 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Parallel/HV/Segment Dimension, Connector with OSNAP start point
-      if (['dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool)) {
+      // 3-Step Dimension Placement (Click P1 -> Click P2 (or Drag P1->P2) -> Move anywhere & Click P3 to place)
+      if (activeTool === 'dimension' || activeTool === 'hv_dimension' || activeTool === 'segment_dimension') {
+        const curStep = dimStepRef.current;
+        const dimCfg = dimensionConfigRef.current;
+        const strokeClr =
+          dimCfg?.strokeColor || (currentStroke && currentStroke !== 'transparent' ? currentStroke : '#1e293b');
+        const textClr = dimCfg?.textColor || '#0f172a';
+        const fontSz = dimCfg?.fontSize || 13;
+        const fontFam = dimCfg?.fontFamily || 'Montserrat';
+
+        // Step 1: Click 1 sets origin P1
+        if (!curStep) {
+          const p1 = resolveSnappedPoint(pointer);
+          dimStepRef.current = {
+            tool: activeTool,
+            p1,
+            p2: p1,
+            phase: 'p2',
+            isDraggingP1P2: true,
+          };
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: activeTool,
+            phase: 'p2',
+            p1,
+            p2: p1,
+            cursor: p1,
+          });
+          setCadHud({
+            x: p1.x,
+            y: p1.y,
+            text: 'Click 2nd point P2 (Esc to cancel)',
+          });
+          return;
+        }
+
+        // Step 2: Click 2 locks end point P2 and enters flexible placement phase P3
+        if (curStep.phase === 'p2') {
+          const osnap = currentSnap?.enabled
+            ? findNearestOsnapPoint(
+                pointer.x,
+                pointer.y,
+                canvas.getObjects(),
+                null,
+                pageConfigRef.current,
+                currentSnap,
+                curZoom,
+                curStep.p1
+              )
+            : null;
+          const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+          const p2 = projectPointWithOrthoAndOsnap(
+            curStep.p1,
+            pointer,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
+            !!currentSnap?.enabled,
+            curZoom
+          ).point;
+          if (Math.hypot(p2.x - curStep.p1.x, p2.y - curStep.p1.y) < 3) {
+            return;
+          }
+          dimStepRef.current = {
+            tool: curStep.tool,
+            p1: curStep.p1,
+            p2,
+            phase: 'place',
+            isDraggingP1P2: false,
+          };
+          setActivePolarGuide(null);
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: curStep.tool,
+            phase: 'place',
+            p1: curStep.p1,
+            p2,
+            cursor: p2,
+          });
+          setCadHud({
+            x: p2.x,
+            y: p2.y,
+            text: 'Move anywhere to position dimension & click to place',
+          });
+          return;
+        }
+
+        // Step 3: Click 3 places dimension with full extension lines, main line, arrows & value+unit text
+        if (curStep.phase === 'place' && curStep.p2) {
+          const placePt = resolveSnappedPoint(pointer);
+          const p1 = curStep.p1;
+          const p2 = curStep.p2;
+          let dimObj: fabric.Group;
+
+          if (curStep.tool === 'hv_dimension') {
+            dimObj = createHVDimensionObject(p1.x, p1.y, p2.x, p2.y, {
+              pageUnit: pageConfigRef.current.units,
+              config: dimCfg,
+              strokeColor: strokeClr,
+              textColor: textClr,
+              fontSize: fontSz,
+              fontFamily: fontFam,
+              fontWeight: dimCfg?.fontWeight || 'bold',
+              fontStyle: dimCfg?.fontStyle || 'normal',
+              placePt,
+            });
+          } else {
+            const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+            const nx = Math.sin(angle);
+            const ny = -Math.cos(angle);
+            const offset = (placePt.x - p1.x) * nx + (placePt.y - p1.y) * ny;
+            dimObj = createDimensionObject(p1.x, p1.y, p2.x, p2.y, {
+              pageUnit: pageConfigRef.current.units,
+              config: dimCfg,
+              offset,
+              kind: curStep.tool === 'segment_dimension' ? 'segment' : 'parallel',
+              strokeColor: strokeClr,
+              textColor: textClr,
+              fontSize: fontSz,
+              fontFamily: fontFam,
+              fontWeight: dimCfg?.fontWeight || 'bold',
+              fontStyle: dimCfg?.fontStyle || 'normal',
+            });
+          }
+
+          if (isPowerClipEditing) {
+            (dimObj as any).isPowerClipContent = true;
+          }
+          canvas.add(dimObj);
+          canvas.setActiveObject(dimObj);
+          onSelectionChange(dimObj);
+          dimStepRef.current = null;
+          setDimOverlay(null);
+          setActivePolarGuide(null);
+          setActiveSnapMarkers([]);
+          setHoverSnapMarker(null);
+          setCadHud(null);
+          canvas.requestRenderAll();
+          onSelectTool('pick');
+          socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (dimObj as any).id, dimObj.toJSON());
+          onCanvasModified?.();
+          return;
+        }
+      }
+
+      // Connector tool with OSNAP start point
+      if (activeTool === 'connector') {
         const startPt = resolveSnappedPoint(pointer);
         isDrawingShapeRef.current = true;
         shapeStartRef.current = startPt;
         lastDrawnPointRef.current = startPt;
 
-        const isDimTool = ['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool);
         const tempLine = new fabric.Line([startPt.x, startPt.y, startPt.x, startPt.y], {
-          stroke: isDimTool ? '#1e293b' : activeTool === 'connector' ? '#f97316' : currentStroke || '#000000',
-          strokeWidth: properties.strokeWidth || 2,
+          stroke: '#f97316',
+          strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
           strokeUniform: true,
-          strokeDashArray: isDimTool ? [4, 4] : [],
-          opacity: activeTool === 'hv_dimension' ? 0.35 : 1,
         });
         activeTempShapeRef.current = tempLine;
         canvas.add(tempLine);
@@ -2588,7 +2980,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           top: startPt.y,
           fill: 'transparent',
           stroke: currentStroke || '#000000',
-          strokeWidth: properties.strokeWidth || 2,
+          strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
+          strokeUniform: true,
         });
         ensureObjectId(spiralObj, 'Archimedean Spiral');
         canvas.add(spiralObj);
@@ -2599,29 +2992,80 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Smart Fill Tool
+      // Smart Fill Tool: detects the intersected / enclosed planar region at click point & creates a new vector object
       if (activeTool === 'smart_fill') {
-        const target = opt.target;
-        if (target) {
-          target.set('fill', currentFill === 'transparent' ? '#00a651' : currentFill);
-          canvas.renderAll();
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+        const cfg = smartFillConfigRef.current;
+        const resolvedFill = cfg
+          ? cfg.useFillColor
+            ? cfg.fillColor || (currentFill === 'transparent' ? '#00a651' : currentFill)
+            : 'transparent'
+          : currentFill === 'transparent'
+          ? '#00a651'
+          : currentFill;
+        const resolvedStrokeWidth = cfg?.outlineMode === 'specify' ? Math.max(0.5, cfg.outlineWidth || 1) : 0;
+        const resolvedStrokeColor =
+          cfg?.outlineMode === 'specify'
+            ? cfg.outlineColor || (currentStroke === 'transparent' ? '#000000' : currentStroke)
+            : 'transparent';
+
+        if (resolvedFill === 'transparent' && resolvedStrokeWidth <= 0) {
+          onNotifyToastRef.current?.('Enable Fill Color or Outline in the Smart Fill bar first');
+          return;
         }
-        onSelectTool('pick');
+
+        const result = smartFillAtPoint(
+          canvas,
+          { x: pointer.x, y: pointer.y },
+          {
+            fillColor: resolvedFill,
+            strokeColor: resolvedStrokeColor,
+            strokeWidth: resolvedStrokeWidth,
+          }
+        );
+
+        if (result) {
+          result.path.set({
+            selectable: false,
+            evented: true,
+            hasControls: false,
+            hasBorders: true,
+          });
+          if (isPowerClipEditing) {
+            (result.path as any).isPowerClipContent = true;
+          }
+          canvas.add(result.path);
+          canvas.setActiveObject(result.path);
+          onSelectionChange(result.path);
+          canvas.requestRenderAll();
+          onCanvasModified?.();
+          socketService.sendCanvasUpdate(
+            canvas.toJSON(),
+            'add',
+            (result.path as any).id,
+            result.path.toJSON()
+          );
+          onNotifyToastRef.current?.(
+            'Smart Fill created new object — click another region or press Esc / Done (Pick)'
+          );
+        } else {
+          onNotifyToastRef.current?.(
+            'No intersected or enclosed area found at click point'
+          );
+        }
         return;
       }
 
-      // Transparency Tool
+      // Transparency Tool: opens temporary floating transparency % slider box right below clicked object
       if (activeTool === 'transparency') {
-        const target = opt.target;
-        if (target) {
-          const newOp = target.opacity === 0.5 ? 1 : 0.5;
-          target.set('opacity', newOp);
-          onUpdateProperties({ opacity: newOp });
-          canvas.renderAll();
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+        const target = resolveEventTarget(canvas, evt, opt);
+        if (target && !(target as any).isDimension) {
+          if (transparencyPopupRef.current && transparencyPopupRef.current.target !== target) {
+            commitAndCloseTransparencyPopup(false);
+          }
+          openTransparencyPopupForTarget(target);
+        } else if (transparencyPopupRef.current) {
+          commitAndCloseTransparencyPopup(false);
         }
-        onSelectTool('pick');
         return;
       }
 
@@ -2814,7 +3258,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
     },
-    [activeTool, currentFill, currentStroke, properties, zoomLevel, pan, onZoomChange, onSelectTool, onUpdateProperties, onSampleColors, powerClipPicking, onPickPowerClipContainer, fitTextPicking, onPickFitTextPath, isPowerClipEditing, onSelectionChange, onCanvasModified, syncCurveOverlay]
+    [activeTool, currentFill, currentStroke, properties, zoomLevel, pan, onZoomChange, onSelectTool, onUpdateProperties, onSampleColors, powerClipPicking, onPickPowerClipContainer, fitTextPicking, onPickFitTextPath, isPowerClipEditing, onSelectionChange, onCanvasModified, syncCurveOverlay, commitAndCloseTransparencyPopup, openTransparencyPopupForTarget]
   );
 
   const handleMouseMove = useCallback(
@@ -3078,11 +3522,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Active Shape / Line / Dimension Drawing with AutoCAD OSNAP + Polar/Ortho + Dynamic Input HUD
+      // Active Shape / Connector Drawing with AutoCAD OSNAP + Polar/Ortho + Dynamic Input HUD
       if (isDrawingShapeRef.current && activeTempShapeRef.current) {
         const start = shapeStartRef.current;
         const shape = activeTempShapeRef.current;
-        const isLinearTool = ['dimension', 'hv_dimension', 'segment_dimension', 'connector'].includes(activeTool);
+        const isLinearTool = activeTool === 'connector';
 
         const osnap = currentSnap?.enabled
           ? findNearestOsnapPoint(
@@ -3115,7 +3559,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           setActiveSnapMarkers([]);
         }
 
-        if (isLinearTool && activeTool !== 'hv_dimension') {
+        if (isLinearTool) {
           const polar = projectPointWithOrthoAndOsnap(
             start,
             pointer,
@@ -3141,46 +3585,14 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             x2: endPt.x,
             y2: endPt.y,
           });
-          if (activeTool === 'hv_dimension') {
-            const dx = Math.abs(endPt.x - start.x);
-            const dy = Math.abs(endPt.y - start.y);
-            const isHoriz = dx >= dy;
-            const measuredPx = isHoriz ? dx : dy;
-            const formatted = formatDimensionValue(
-              measuredPx,
-              pageConfigRef.current.units,
-              dimensionConfigRef.current
-            );
-            setDimOverlay({ kind: 'hv', x1: start.x, y1: start.y, x2: endPt.x, y2: endPt.y });
-            setCadHud({
-              x: endPt.x,
-              y: endPt.y,
-              text: `${isHoriz ? 'H' : 'V'}: ${formatted}`,
-            });
-          } else if (activeTool === 'dimension' || activeTool === 'segment_dimension') {
-            const len = Math.hypot(endPt.x - start.x, endPt.y - start.y);
-            let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
-            if (deg < 0) deg += 360;
-            const formatted = formatDimensionValue(
-              len,
-              pageConfigRef.current.units,
-              dimensionConfigRef.current
-            );
-            setCadHud({
-              x: endPt.x,
-              y: endPt.y,
-              text: `${formatted}  ∠ ${deg}°${currentGuide?.isOrtho ? '  ORTHO' : ''}`,
-            });
-          } else {
-            const len = Math.round(Math.hypot(endPt.x - start.x, endPt.y - start.y));
-            let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
-            if (deg < 0) deg += 360;
-            setCadHud({
-              x: endPt.x,
-              y: endPt.y,
-              text: `${len} px  ∠ ${deg}°${currentGuide?.isOrtho ? '  ORTHO' : ''}`,
-            });
-          }
+          const len = Math.round(Math.hypot(endPt.x - start.x, endPt.y - start.y));
+          let deg = Math.round(((Math.atan2(endPt.y - start.y, endPt.x - start.x) * 180) / Math.PI) * 10) / 10;
+          if (deg < 0) deg += 360;
+          setCadHud({
+            x: endPt.x,
+            y: endPt.y,
+            text: `${len} px  ∠ ${deg}°${currentGuide?.isOrtho ? '  ORTHO' : ''}`,
+          });
           canvas.requestRenderAll();
           return;
         }
@@ -3297,7 +3709,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               const pathObj = new fabric.Path(pathStr, {
                 fill: 'transparent',
                 stroke: currentStroke || '#000000',
-                strokeWidth: properties.strokeWidth || 2,
+                strokeWidth: properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
                 strokeUniform: true,
                 selectable: true,
               });
@@ -3386,6 +3798,102 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       } else {
         setBezierRubberBand((prev) => (prev ? null : prev));
         setBezierPenPreview((prev) => (prev ? null : prev));
+      }
+
+      // Multi-step Linear / HV / Segment Dimension Live Preview (P1 -> P2 -> Place anywhere P3)
+      if (['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool) && dimStepRef.current) {
+        const st = dimStepRef.current;
+        const orthoActive = isOrthoActive(currentSnap, evt.shiftKey);
+        const osnap = currentSnap?.enabled
+          ? findNearestOsnapPoint(
+              pointer.x,
+              pointer.y,
+              canvas.getObjects(),
+              null,
+              pageConfigRef.current,
+              currentSnap,
+              curZoom,
+              st.phase === 'p2' ? st.p1 : null
+            )
+          : null;
+
+        if (osnap) {
+          setActiveSnapMarkers([
+            {
+              id: `dim-osnap-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
+              x: osnap.x,
+              y: osnap.y,
+              type: osnap.type,
+              label: osnap.label,
+            },
+          ]);
+        } else {
+          setActiveSnapMarkers([]);
+        }
+
+        if (st.phase === 'p2') {
+          const polar = projectPointWithOrthoAndOsnap(
+            st.p1,
+            pointer,
+            osnap ? { x: osnap.x, y: osnap.y } : null,
+            orthoActive,
+            !!currentSnap?.enabled,
+            curZoom
+          );
+          const curPt = polar.point;
+          st.p2 = curPt;
+          setActivePolarGuide(polar.polarGuide);
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: st.tool,
+            phase: 'p2',
+            p1: st.p1,
+            p2: curPt,
+            cursor: curPt,
+          });
+          const len = Math.hypot(curPt.x - st.p1.x, curPt.y - st.p1.y);
+          const formatted = formatDimensionValue(
+            len,
+            pageConfigRef.current.units,
+            dimensionConfigRef.current
+          );
+          let deg = Math.round(((Math.atan2(curPt.y - st.p1.y, curPt.x - st.p1.x) * 180) / Math.PI) * 10) / 10;
+          if (deg < 0) deg += 360;
+          setCadHud({
+            x: curPt.x,
+            y: curPt.y,
+            text: `${formatted}  ∠ ${deg}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''} — Click P2`,
+          });
+          return;
+        }
+
+        if (st.phase === 'place' && st.p2) {
+          const curPt = osnap ? { x: osnap.x, y: osnap.y } : { x: pointer.x, y: pointer.y };
+          setActivePolarGuide(null);
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: st.tool,
+            phase: 'place',
+            p1: st.p1,
+            p2: st.p2,
+            cursor: curPt,
+          });
+          const measuredPx =
+            st.tool === 'hv_dimension'
+              ? computeHVDimensionGeometry(st.p1.x, st.p1.y, st.p2.x, st.p2.y, curPt).pxLen
+              : Math.hypot(st.p2.x - st.p1.x, st.p2.y - st.p1.y);
+          const formatted = formatDimensionValue(
+            measuredPx,
+            pageConfigRef.current.units,
+            dimensionConfigRef.current
+          );
+          setCadHud({
+            x: curPt.x,
+            y: curPt.y,
+            text: `${formatted} — Click anywhere to place`,
+          });
+          return;
+        }
       }
 
       // Multi-step Angular Dimension live preview
@@ -3546,7 +4054,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       }
 
       // Segment Dimension & Virtual Segment Delete live segment hover highlight
-      if ((activeTool === 'segment_dimension' || activeTool === 'virtual_segment_delete') && evt.buttons === 0) {
+      if ((activeTool === 'segment_dimension' && !dimStepRef.current || activeTool === 'virtual_segment_delete') && evt.buttons === 0) {
         const segHit = findNearestObjectSegment(
           canvas.getObjects(),
           pointer.x,
@@ -3571,7 +4079,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           setCadHud({
             x: pointer.x,
             y: pointer.y,
-            text: activeTool === 'virtual_segment_delete' ? `Delete Segment (${label})` : `Segment: ${label} (Click)`,
+            text: activeTool === 'virtual_segment_delete' ? `Delete Segment (${label})` : `Segment: ${label} (Click edge)`,
           });
         } else {
           setDimOverlay((prev) => (prev?.kind === 'segment' ? null : prev));
@@ -3878,6 +4386,36 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
+      // Dimension P1 -> P2 Drag release support (if dragged >= 6px, automatically advance to P3 placement!)
+      if (
+        ['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool) &&
+        dimStepRef.current &&
+        dimStepRef.current.phase === 'p2' &&
+        dimStepRef.current.isDraggingP1P2
+      ) {
+        const st = dimStepRef.current;
+        st.isDraggingP1P2 = false;
+        const p2 = st.p2 || st.p1;
+        if (Math.hypot(p2.x - st.p1.x, p2.y - st.p1.y) >= 6) {
+          dimStepRef.current = { tool: st.tool, p1: st.p1, p2, phase: 'place', isDraggingP1P2: false };
+          setActivePolarGuide(null);
+          setDimOverlay({
+            kind: 'linear_preview',
+            tool: st.tool,
+            phase: 'place',
+            p1: st.p1,
+            p2,
+            cursor: p2,
+          });
+          setCadHud({
+            x: p2.x,
+            y: p2.y,
+            text: 'Move anywhere to position dimension & click to place',
+          });
+        }
+        return;
+      }
+
       if (isDrawingShapeRef.current && activeTempShapeRef.current) {
         isDrawingShapeRef.current = false;
         const tempObj = activeTempShapeRef.current;
@@ -3887,43 +4425,16 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         const endPt = lastDrawnPointRef.current || rawPointer;
         lastDrawnPointRef.current = null;
 
-        if (activeTool === 'dimension' || activeTool === 'hv_dimension' || activeTool === 'segment_dimension') {
-          canvas.remove(tempObj);
-          activeTempShapeRef.current = null;
-          setDimOverlay(null);
-          if (Math.hypot(endPt.x - start.x, endPt.y - start.y) < 4) {
-            canvas.renderAll();
-            return;
-          }
-          const dimObj =
-            activeTool === 'hv_dimension'
-              ? createHVDimensionObject(start.x, start.y, endPt.x, endPt.y, {
-                  pageUnit: pageConfigRef.current.units,
-                  config: dimensionConfigRef.current,
-                  strokeColor: currentStroke || '#1e293b',
-                })
-              : createDimensionObject(start.x, start.y, endPt.x, endPt.y, {
-                  pageUnit: pageConfigRef.current.units,
-                  config: dimensionConfigRef.current,
-                  offset: activeTool === 'segment_dimension' ? 24 : 0,
-                  kind: activeTool === 'segment_dimension' ? 'segment' : 'parallel',
-                  strokeColor: currentStroke || '#1e293b',
-                });
-          if (isPowerClipEditing) {
-            (dimObj as any).isPowerClipContent = true;
-          }
-          canvas.add(dimObj);
-          canvas.setActiveObject(dimObj);
-          canvas.renderAll();
-          onSelectTool('pick');
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (dimObj as any).id, dimObj.toJSON());
-          onCanvasModified?.();
-          return;
-        }
-
         if (activeTool === 'connector') {
           canvas.remove(tempObj);
-          const connObj = createConnectorObject(start.x, start.y, endPt.x, endPt.y);
+          const connObj = createConnectorObject(
+            start.x,
+            start.y,
+            endPt.x,
+            endPt.y,
+            properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25,
+            currentStroke || '#334155'
+          );
           canvas.add(connObj);
           canvas.setActiveObject(connObj);
           activeTempShapeRef.current = null;
@@ -4086,7 +4597,8 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Double-clicking a regular Group with Pick tool enters Group Editing mode (supports nested groups!)
+      // Double-clicking a regular Group or Dimension with Pick tool enters Group Editing mode
+      // For Dimensions, focus/select the dimension text sub-object so user can directly resize/style or edit it while lines & arrows remain!
       if (
         (activeTool === 'pick' || activeTool === 'freehand_pick') &&
         target &&
@@ -4097,7 +4609,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         (target as any).customType !== 'qrcode' &&
         onGroupEditEnter
       ) {
-        const subTarget = opt?.subTargets && opt.subTargets.length > 0 ? opt.subTargets[0] : null;
+        let subTarget = opt?.subTargets && opt.subTargets.length > 0 ? opt.subTargets[0] : null;
+        if ((target as any).isDimension && (!subTarget || (subTarget.type !== 'i-text' && subTarget.type !== 'text'))) {
+          const groupChildren = typeof target.getObjects === 'function' ? target.getObjects() : [];
+          subTarget = groupChildren.find((c: any) => c.type === 'i-text' || c.type === 'text') || subTarget;
+        }
         onGroupEditEnter(target, subTarget);
         return;
       }
@@ -4132,7 +4648,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         return;
       }
 
-      // Double-clicking inside an active Crop Region applies the crop immediately (CorelDRAW standard!)
+      // Double-clicking inside an active Crop Region applies the crop immediately (NuraDraw standard!)
       if (activeTool === 'crop' && cropToolsConfigRef.current?.cropRegion && canvas && opt?.e) {
         const pt = canvas.getScenePoint(opt.e as MouseEvent);
         const r = cropToolsConfigRef.current.cropRegion;
@@ -4142,7 +4658,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         }
       }
 
-      // In CorelDRAW: double-clicking empty page or desk in pick mode opens Page Setup!
+      // In NuraDraw: double-clicking empty page or desk in pick mode opens Page Setup!
       if ((activeTool === 'pick' || activeTool === 'pan') && (!opt || !opt.target) && onOpenPageSetup) {
         onOpenPageSetup();
       }
@@ -4213,6 +4729,13 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           setActivePolarGuide(null);
           setCadHud(null);
           onSelectTool('pick');
+        } else if (['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool) && dimStepRef.current) {
+          dimStepRef.current = null;
+          setDimOverlay(null);
+          setActivePolarGuide(null);
+          setActiveSnapMarkers([]);
+          setCadHud(null);
+          onSelectTool('pick');
         } else if (activeTool === 'angular_dimension' && angularStepRef.current) {
           angularStepRef.current = null;
           setDimOverlay(null);
@@ -4233,7 +4756,16 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
           setCropDraftRect(null);
           onUpdateCropToolsConfig?.({ cropRegion: null });
           setCadHud(null);
+        } else if (activeTool === 'transparency') {
+          if (transparencyPopupRef.current) {
+            cancelTransparencyPopup();
+          } else {
+            onSelectTool('pick');
+          }
         }
+      } else if (e.key === 'Enter' && activeTool === 'transparency' && transparencyPopupRef.current) {
+        e.preventDefault();
+        commitAndCloseTransparencyPopup(true);
       } else if (e.key === 'Enter' && activeTool === 'crop' && cropToolsConfigRef.current?.cropRegion) {
         e.preventDefault();
         applyCropRegionToCanvas(cropToolsConfigRef.current.cropRegion);
@@ -4301,7 +4833,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [activeTool, onSelectTool, pageConfig, handleDoubleClick, onSelectionChange, applyCropRegionToCanvas, onUpdateCropToolsConfig, cropDraftRect]);
+  }, [activeTool, onSelectTool, pageConfig, handleDoubleClick, onSelectionChange, applyCropRegionToCanvas, onUpdateCropToolsConfig, cropDraftRect, cancelTransparencyPopup, commitAndCloseTransparencyPopup]);
 
   // AutoCAD-Grade Real-time Object Snapping Engine (Move + Polar/Ortho + CAD HUD)
   const handleObjectMoving = useCallback((e: any) => {
@@ -4712,7 +5244,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             />
           )}
 
-          {/* CorelDRAW Paper Outline / Shadow (Exact match with image_2b0a935b.png) */}
+          {/* NuraDraw Paper Outline / Shadow (Exact match with image_2b0a935b.png) */}
           {pageConfig.showPageBorder !== false && (
             <div
               className={`absolute pointer-events-none ${
@@ -4801,7 +5333,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             <canvas ref={canvasElementRef} />
           </div>
 
-          {/* CorelDRAW Shape Tool (F10) Curve Wireframe, Bezier Handles & Nodes SVG Overlay */}
+          {/* NuraDraw Shape Tool (F10) Curve Wireframe, Bezier Handles & Nodes SVG Overlay */}
           {(curveOverlay || curveMarquee) && (
             <svg className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible">
               {/* Subpath blue hairline wireframe */}
@@ -4922,7 +5454,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                 );
               })}
 
-              {/* CorelDRAW Node Glyphs: Square (Cusp), Circle (Smooth), Diamond (Symmetrical) */}
+              {/* NuraDraw Node Glyphs: Square (Cusp), Circle (Smooth), Diamond (Symmetrical) */}
               {curveOverlay?.data.nodes.map((node) => {
                 const isSel = curveOverlay.selectedNodes.includes(node.cmdIndex);
                 const isHov = curveOverlay.hoverNodeCmd === node.cmdIndex;
@@ -5096,27 +5628,153 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             eraserCursorPt ||
             cadHud) && (
             <svg className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-visible">
-              {/* Live Dimension Tool SVG Previews (H/V, Angular, Segment, 3-Point Callout) */}
-              {dimOverlay?.kind === 'hv' && (() => {
-                const { x1, y1, x2, y2 } = dimOverlay;
-                const isHoriz = Math.abs(x2 - x1) >= Math.abs(y2 - y1);
-                const sx1 = pan.x + x1 * zoomLevel;
-                const sy1 = pan.y + y1 * zoomLevel;
-                const sx2 = pan.x + x2 * zoomLevel;
-                const sy2 = pan.y + y2 * zoomLevel;
-                return isHoriz ? (
+              {/* Live Dimension Tool SVG Previews (3-Step Linear, H/V, Angular, Segment, 3-Point Callout) */}
+              {dimOverlay?.kind === 'linear_preview' && (() => {
+                const { tool, phase, p1, p2, cursor } = dimOverlay;
+                const dimCfg = dimensionConfigRef.current;
+                const style = dimCfg?.style || 'arrows';
+                const textPosition = dimCfg?.textPosition || 'above';
+                const strokeColor = '#0284c7';
+                const toScreen = (x: number, y: number) => ({
+                  x: pan.x + x * zoomLevel,
+                  y: pan.y + y * zoomLevel,
+                });
+
+                const sp1 = toScreen(p1.x, p1.y);
+                const sp2 = toScreen(p2.x, p2.y);
+
+                const renderSvgArrow = (x: number, y: number, inwardAngleRad: number, size: number = 10) => {
+                  const spread = Math.PI / 6.5;
+                  const bx1 = x - Math.cos(inwardAngleRad - spread) * size;
+                  const by1 = y - Math.sin(inwardAngleRad - spread) * size;
+                  const bx2 = x - Math.cos(inwardAngleRad + spread) * size;
+                  const by2 = y - Math.sin(inwardAngleRad + spread) * size;
+                  return <polygon points={`${x},${y} ${bx1},${by1} ${bx2},${by2}`} fill={strokeColor} />;
+                };
+
+                const renderSvgTick = (cx: number, cy: number, axisAngle: number) => {
+                  const ta = axisAngle + Math.PI / 4;
+                  const tdx = Math.cos(ta) * 5.5;
+                  const tdy = Math.sin(ta) * 5.5;
+                  return <line x1={cx - tdx} y1={cy - tdy} x2={cx + tdx} y2={cy + tdy} stroke={strokeColor} strokeWidth="2" />;
+                };
+
+                if (phase === 'p2') {
+                  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                  const label = formatDimensionValue(len, pageConfig.units, dimCfg);
+                  const mid = { x: (sp1.x + sp2.x) / 2, y: (sp1.y + sp2.y) / 2 };
+                  return (
+                    <g>
+                      <line x1={sp1.x} y1={sp1.y} x2={sp2.x} y2={sp2.y} stroke={strokeColor} strokeWidth="1.6" strokeDasharray="5 3" />
+                      <circle cx={sp1.x} cy={sp1.y} r={4} fill={strokeColor} stroke="#ffffff" strokeWidth="1.5" />
+                      <circle cx={sp2.x} cy={sp2.y} r={4} fill={strokeColor} stroke="#ffffff" strokeWidth="1.5" />
+                      {len > 6 && (
+                        <g transform={`translate(${mid.x}, ${mid.y - 14})`}>
+                          <rect x={-40} y={-10} width={80} height={18} rx={3} fill="rgba(255,255,255,0.92)" stroke="#bae6fd" strokeWidth="1" />
+                          <text x={0} y={3} textAnchor="middle" fontSize="11" fontWeight="700" fill="#0f172a">
+                            {label}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                }
+
+                if (tool === 'hv_dimension') {
+                  const geom = computeHVDimensionGeometry(p1.x, p1.y, p2.x, p2.y, cursor, textPosition, dimCfg?.fontSize || 13);
+                  const e1a = toScreen(geom.ext1[0], geom.ext1[1]);
+                  const e1b = toScreen(geom.ext1[2], geom.ext1[3]);
+                  const e2a = toScreen(geom.ext2[0], geom.ext2[1]);
+                  const e2b = toScreen(geom.ext2[2], geom.ext2[3]);
+                  const d1 = toScreen(geom.dimLine[0], geom.dimLine[1]);
+                  const d2 = toScreen(geom.dimLine[2], geom.dimLine[3]);
+                  const txtPt = toScreen(geom.textX, geom.textY);
+                  const label = formatDimensionValue(geom.pxLen, pageConfig.units, dimCfg);
+                  return (
+                    <g>
+                      <circle cx={sp1.x} cy={sp1.y} r={3.2} fill={strokeColor} />
+                      <circle cx={sp2.x} cy={sp2.y} r={3.2} fill={strokeColor} />
+                      <line x1={e1a.x} y1={e1a.y} x2={e1b.x} y2={e1b.y} stroke={strokeColor} strokeWidth="1.2" />
+                      <line x1={e2a.x} y1={e2a.y} x2={e2b.x} y2={e2b.y} stroke={strokeColor} strokeWidth="1.2" />
+                      <line x1={d1.x} y1={d1.y} x2={d2.x} y2={d2.y} stroke={strokeColor} strokeWidth="1.8" />
+                      {geom.pxLen > 6 && (
+                        style === 'ticks' ? (
+                          <>
+                            {renderSvgTick(d1.x, d1.y, geom.dirAngle)}
+                            {renderSvgTick(d2.x, d2.y, geom.dirAngle)}
+                          </>
+                        ) : (
+                          <>
+                            {renderSvgArrow(d1.x, d1.y, geom.dirAngle + Math.PI)}
+                            {renderSvgArrow(d2.x, d2.y, geom.dirAngle)}
+                          </>
+                        )
+                      )}
+                      <g transform={`translate(${txtPt.x}, ${txtPt.y}) rotate(${geom.textDeg})`}>
+                        <rect x={-42} y={-10} width={84} height={18} rx={3} fill="rgba(255,255,255,0.94)" stroke="#bae6fd" strokeWidth="1" />
+                        <text x={0} y={3} textAnchor="middle" fontSize="11" fontWeight="700" fill="#0f172a">
+                          {label}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                }
+
+                // Parallel or Segment live placement preview
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                const nx = Math.sin(angle);
+                const ny = -Math.cos(angle);
+                const offset = (cursor.x - p1.x) * nx + (cursor.y - p1.y) * ny;
+                const geom = computeParallelDimensionGeometry(p1.x, p1.y, p2.x, p2.y, offset, textPosition, dimCfg?.fontSize || 13);
+                const sd1 = toScreen(geom.dx1, geom.dy1);
+                const sd2 = toScreen(geom.dx2, geom.dy2);
+                const txtPt = toScreen(geom.textX, geom.textY);
+                const label = formatDimensionValue(geom.pxLen, pageConfig.units, dimCfg);
+                const e1a = geom.ext1 ? toScreen(geom.ext1[0], geom.ext1[1]) : null;
+                const e1b = geom.ext1 ? toScreen(geom.ext1[2], geom.ext1[3]) : null;
+                const e2a = geom.ext2 ? toScreen(geom.ext2[0], geom.ext2[1]) : null;
+                const e2b = geom.ext2 ? toScreen(geom.ext2[2], geom.ext2[3]) : null;
+                const c1a = geom.cap1 ? toScreen(geom.cap1[0], geom.cap1[1]) : null;
+                const c1b = geom.cap1 ? toScreen(geom.cap1[2], geom.cap1[3]) : null;
+                const c2a = geom.cap2 ? toScreen(geom.cap2[0], geom.cap2[1]) : null;
+                const c2b = geom.cap2 ? toScreen(geom.cap2[2], geom.cap2[3]) : null;
+
+                return (
                   <g>
-                    <line x1={sx1} y1={sy1} x2={sx1} y2={sy2} stroke="#0284c7" strokeWidth="1.2" strokeDasharray="3 2" />
-                    <line x1={sx1} y1={sy2} x2={sx2} y2={sy2} stroke="#0284c7" strokeWidth="1.8" />
-                    <circle cx={sx1} cy={sy2} r={3} fill="#0284c7" />
-                    <circle cx={sx2} cy={sy2} r={3} fill="#0284c7" />
-                  </g>
-                ) : (
-                  <g>
-                    <line x1={sx1} y1={sy1} x2={sx2} y2={sy1} stroke="#0284c7" strokeWidth="1.2" strokeDasharray="3 2" />
-                    <line x1={sx2} y1={sy1} x2={sx2} y2={sy2} stroke="#0284c7" strokeWidth="1.8" />
-                    <circle cx={sx2} cy={sy1} r={3} fill="#0284c7" />
-                    <circle cx={sx2} cy={sy2} r={3} fill="#0284c7" />
+                    <circle cx={sp1.x} cy={sp1.y} r={3.2} fill={strokeColor} />
+                    <circle cx={sp2.x} cy={sp2.y} r={3.2} fill={strokeColor} />
+                    {e1a && e1b && e2a && e2b && (
+                      <>
+                        <line x1={e1a.x} y1={e1a.y} x2={e1b.x} y2={e1b.y} stroke={strokeColor} strokeWidth="1.2" />
+                        <line x1={e2a.x} y1={e2a.y} x2={e2b.x} y2={e2b.y} stroke={strokeColor} strokeWidth="1.2" />
+                      </>
+                    )}
+                    {c1a && c1b && c2a && c2b && (
+                      <>
+                        <line x1={c1a.x} y1={c1a.y} x2={c1b.x} y2={c1b.y} stroke={strokeColor} strokeWidth="1.4" />
+                        <line x1={c2a.x} y1={c2a.y} x2={c2b.x} y2={c2b.y} stroke={strokeColor} strokeWidth="1.4" />
+                      </>
+                    )}
+                    <line x1={sd1.x} y1={sd1.y} x2={sd2.x} y2={sd2.y} stroke={strokeColor} strokeWidth="1.8" />
+                    {geom.pxLen > 6 && (
+                      style === 'ticks' ? (
+                        <>
+                          {renderSvgTick(sd1.x, sd1.y, geom.angle)}
+                          {renderSvgTick(sd2.x, sd2.y, geom.angle)}
+                        </>
+                      ) : (
+                        <>
+                          {renderSvgArrow(sd1.x, sd1.y, geom.angle + Math.PI)}
+                          {renderSvgArrow(sd2.x, sd2.y, geom.angle)}
+                        </>
+                      )
+                    )}
+                    <g transform={`translate(${txtPt.x}, ${txtPt.y}) rotate(${geom.textDeg})`}>
+                      <rect x={-42} y={-10} width={84} height={18} rx={3} fill="rgba(255,255,255,0.94)" stroke="#bae6fd" strokeWidth="1" />
+                      <text x={0} y={3} textAnchor="middle" fontSize="11" fontWeight="700" fill="#0f172a">
+                        {label}
+                      </text>
+                    </g>
                   </g>
                 );
               })()}
@@ -5328,7 +5986,11 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
                       x2={lx2}
                       y2={ly2}
                       stroke={currentStroke || '#000000'}
-                      strokeWidth={Math.max(1.5, (properties.strokeWidth || 2) * zoomLevel)}
+                      strokeWidth={
+                        (properties.strokeWidth ?? 0.25) <= HAIRLINE_THRESHOLD_PT
+                          ? 0.75
+                          : (properties.strokeWidth || 0.25) * zoomLevel
+                      }
                       strokeLinecap="round"
                     />
                     <line
@@ -6145,6 +6807,126 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
               );
             })()}
 
+          {/* Temporary Transparency Percentage Adjustment Box Below Selected/Clicked Object */}
+          {activeTool === 'transparency' && transparencyPopup && (() => {
+            const br = transparencyPopup.target.getBoundingRect();
+            const rawX = pan.x + (br.left + br.width / 2) * zoomLevel;
+            const rawY = pan.y + (br.top + br.height) * zoomLevel + 12;
+            const deskW = deskRef.current?.clientWidth || 900;
+            const deskH = deskRef.current?.clientHeight || 650;
+            const boxLeft = Math.max(130, Math.min(deskW - 130, rawX));
+            const boxTop = Math.max(16, Math.min(deskH - 126, rawY));
+            const pct = transparencyPopup.transparencyPct;
+            const isDark = theme === 'dark';
+
+            return (
+              <div
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                style={{
+                  left: `${boxLeft}px`,
+                  top: `${boxTop}px`,
+                  transform: 'translateX(-50%)',
+                }}
+                className={`absolute z-35 w-[244px] rounded-md border shadow-2xl p-2.5 select-none pointer-events-auto ${
+                  isDark
+                    ? 'bg-[#2c2f36] border-[#525660] text-zinc-100'
+                    : 'bg-white border-[#a8adb5] text-zinc-900'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="inline-block w-2.5 h-2.5 rounded-xs border border-zinc-400 bg-gradient-to-br from-[#0078d7] to-transparent shrink-0" />
+                    <span className="text-[11px] font-semibold truncate">
+                      Transparency ({transparencyPopup.label})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => commitAndCloseTransparencyPopup(false)}
+                    title="Close box (keep transparency)"
+                    className={`w-5 h-5 flex items-center justify-center rounded text-xs cursor-pointer ${
+                      isDark ? 'hover:bg-zinc-700 text-zinc-300' : 'hover:bg-zinc-200 text-zinc-600'
+                    }`}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={pct}
+                    onChange={(e) => applyTransparencyPercentage(Number(e.target.value))}
+                    className="flex-1 h-1.5 accent-[#0078d7] cursor-pointer"
+                    title="Adjust Transparency Percentage (0% = Opaque, 100% = Invisible)"
+                  />
+                  <div className="flex items-center shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={pct}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (!Number.isNaN(val)) applyTransparencyPercentage(val);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitAndCloseTransparencyPopup(true);
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelTransparencyPopup();
+                        }
+                      }}
+                      className={`w-12 h-6 px-1 text-right text-[11px] font-mono border rounded-xs outline-none focus:border-[#0078d7] ${
+                        isDark
+                          ? 'bg-[#1f2126] border-[#4f545e] text-zinc-100'
+                          : 'bg-white border-[#abadb3] text-zinc-900'
+                      }`}
+                    />
+                    <span className="ml-0.5 text-[11px] font-mono opacity-80">%</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1">
+                    {[0, 25, 50, 75, 90].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => applyTransparencyPercentage(preset)}
+                        className={`px-1.5 py-0.5 rounded-xs text-[10px] font-mono border cursor-pointer ${
+                          pct === preset
+                            ? 'bg-[#0078d7] text-white border-[#0078d7] font-semibold'
+                            : isDark
+                            ? 'bg-[#363a42] border-[#525660] text-zinc-200 hover:bg-[#434852]'
+                            : 'bg-[#f4f4f6] border-[#c4c8ce] text-zinc-800 hover:bg-[#e5f1fb]'
+                        }`}
+                      >
+                        {preset}%
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => commitAndCloseTransparencyPopup(true)}
+                    className="h-5 px-2 bg-[#0078d7] hover:bg-[#0063b1] text-white rounded-xs text-[10.5px] font-semibold cursor-pointer shrink-0"
+                    title="Apply and return to Pick Tool (Enter)"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Collaborative Remote Cursors Overlay */}
           {collaborators
             .filter((user) => user.id !== currentUser.id && user.cursor)
@@ -6214,7 +6996,7 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
             </>
           )}
 
-          {/* CorelDRAW Bottom-Right Document Navigator Corner Button & Minimap Popup */}
+          {/* NuraDraw Bottom-Right Document Navigator Corner Button & Minimap Popup */}
           {showDocNavigator && (
             <div className="absolute right-0 bottom-0 z-40">
               {docNavOpen && (
@@ -6296,9 +7078,9 @@ export const CorelCanvas: React.FC<CorelCanvasProps> = ({
         </div>
       </div>
 
-      {/* CorelDRAW Authentic Right-Click Context Menu */}
+      {/* NuraDraw Authentic Right-Click Context Menu */}
       {contextMenuPos && (
-        <CorelContextMenu
+        <NuraContextMenu
           x={contextMenuPos.x}
           y={contextMenuPos.y}
           selectedObject={fabricRef.current?.getActiveObject() || null}

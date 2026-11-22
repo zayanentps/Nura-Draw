@@ -1,4 +1,4 @@
-import { CORELDRAW_PALETTE } from './palette';
+import { NURADRAW_PALETTE } from './palette';
 
 export interface RGBColor {
   r: number;
@@ -88,7 +88,7 @@ export function rgbToHex(r: number, g: number, b: number): string {
 }
 
 export function rgbToCmyk(r: number, g: number, b: number): CMYKColor {
-  // CorelDRAW default Black (#373435) and near-pure black (#000000) -> K:100
+  // NuraDraw default Black (#373435) and near-pure black (#000000) -> K:100
   const hex = rgbToHex(r, g, b);
   if (hex === '#000000' || hex === '#373435') {
     return { c: 0, m: 0, y: 0, k: 100 };
@@ -279,7 +279,7 @@ export function rgbToYiq(r: number, g: number, b: number): YIQColor {
   const y = 0.299 * rr + 0.587 * gg + 0.114 * bb;
   const i = 0.595716 * rr - 0.274453 * gg - 0.321263 * bb;
   const q = 0.211456 * rr - 0.522591 * gg + 0.311135 * bb;
-  // Offset I and Q by +100 so neutral gray/black centers around 100 (Corel UI convention)
+  // Offset I and Q by +100 so neutral gray/black centers around 100 (NuraDraw UI convention)
   return {
     y: Math.round(clamp(y, 0, 255)),
     i: Math.round(clamp(i + 100, 0, 255)),
@@ -312,7 +312,7 @@ export function resolveColorName(hex: string): string {
   if (!norm) return 'None';
   if (norm === '#000000' || norm === '#373435') return 'Black';
 
-  const exact = CORELDRAW_PALETTE.find((s) => s.hex.toLowerCase() === norm);
+  const exact = NURADRAW_PALETTE.find((s) => s.hex.toLowerCase() === norm);
   if (exact) return exact.name;
 
   const { r, g, b } = hexToRgb(norm);

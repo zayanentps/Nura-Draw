@@ -174,7 +174,7 @@ export const IconMirrorVertical: React.FC<{ className?: string }> = ({ className
   </svg>
 );
 
-// Corner styles for CorelDRAW rectangle
+// Corner styles for NuraDraw rectangle
 export const IconCornerRound: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
     <path d="M3 13 L3 8 C3 5.2 5.2 3 8 3 L13 3" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" />
@@ -202,7 +202,7 @@ export const IconPenNib: React.FC<{ className?: string }> = ({ className = 'w-4 
   </svg>
 );
 
-// CorelDRAW PowerClip Icon
+// NuraDraw PowerClip Icon
 export const IconPowerClip: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
     <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" stroke="#0072bc" strokeWidth="1.2" fill="#e0f2fe" strokeDasharray="3 1.5" />
@@ -301,7 +301,7 @@ export const IconPowerExit: React.FC<{ className?: string }> = ({ className = 'w
   </svg>
 );
 
-// Edit Menu Icons (Matching CorelDRAW edit_tab_c6f39bd0.jpg)
+// Edit Menu Icons (Matching NuraDraw edit_tab_c6f39bd0.jpg)
 
 // Undo curved counter-clockwise arrow
 export const IconUndoMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
@@ -802,7 +802,7 @@ export const IconEncodeText: React.FC<{ className?: string }> = ({ className = '
   </svg>
 );
 
-// Nudge Distance 4-way diamond/square icon (matching CorelDRAW image_205e352e.png)
+// Nudge Distance 4-way diamond/square icon (matching NuraDraw image_205e352e.png)
 export const IconNudgeDistance: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
     <rect x="6" y="6" width="4" height="4" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" />
@@ -817,7 +817,7 @@ export const IconNudgeDistance: React.FC<{ className?: string }> = ({ className 
   </svg>
 );
 
-// Autofit Page icon (matching CorelDRAW image_387e6bbe.png)
+// Autofit Page icon (matching NuraDraw image_387e6bbe.png)
 export const IconAutofitPage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
     {/* Page rectangle with slight top-left corner dog-ear */}

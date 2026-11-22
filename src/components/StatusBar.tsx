@@ -195,7 +195,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           </select>
         </div>
 
-        {/* CorelDRAW Status Bar Fill & Outline Indicator */}
+        {/* NuraDraw Status Bar Fill & Outline Indicator */}
         <div
           className={`flex items-center gap-2 border-l pl-3 text-[10px] ${isDark ? 'border-zinc-800' : 'border-[#cfd1d6]'}`}
           title="Active Fill & Outline (Left-click right palette = Fill, Right-click = Outline)"

@@ -58,7 +58,7 @@ export const TextToolsModals: React.FC<TextToolsModalsProps> = ({
     } else if (isTextObj) {
       setEditTextValue(String((selectedObject as any).text || ''));
     } else {
-      setEditTextValue('Sample CorelDRAW Text');
+      setEditTextValue('Sample NuraDraw Text');
     }
   }, [activeDialog, isTextObj, isCurvedText, selectedObject]);
 

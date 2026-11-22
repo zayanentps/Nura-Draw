@@ -19,8 +19,8 @@ class SocketService {
 
   constructor() {
     // Generate or restore user profile
-    const savedName = localStorage.getItem('corel_user_name');
-    const savedColor = localStorage.getItem('corel_user_color');
+    const savedName = localStorage.getItem('nuradraw_user_name');
+    const savedColor = localStorage.getItem('nuradraw_user_color');
     if (savedName) this.currentUser.name = savedName;
     if (savedColor) this.currentUser.color = savedColor;
   }
@@ -31,13 +31,13 @@ class SocketService {
 
   public updateUserName(name: string) {
     this.currentUser.name = name;
-    localStorage.setItem('corel_user_name', name);
+    localStorage.setItem('nuradraw_user_name', name);
     this.emitUserJoin();
   }
 
   public updateUserColor(color: string) {
     this.currentUser.color = color;
-    localStorage.setItem('corel_user_color', color);
+    localStorage.setItem('nuradraw_user_color', color);
     this.emitUserJoin();
   }
 

@@ -368,7 +368,7 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
                   {tab.icon}
                 </div>
 
-                {/* Vertical Label Text (Top-to-Bottom as in CorelDRAW) */}
+                {/* Vertical Label Text (Top-to-Bottom as in NuraDraw) */}
                 <span
                   style={{ writingMode: 'vertical-rl' }}
                   className="text-[11px] tracking-wider select-none leading-none py-1.5"

@@ -447,7 +447,7 @@ export const PropertiesDocker: React.FC<PropertiesDockerProps> = ({
             <button
               onClick={() => applyGradient('#00a651', '#fff568')}
               className="w-6 h-6 rounded border border-zinc-400/80 bg-gradient-to-r from-emerald-600 to-yellow-300 shadow-xs"
-              title="Corel Green Aura"
+              title="Nura Green Aura"
             />
             <button
               onClick={() => applyGradient('#92278f', '#ec008c')}
@@ -476,16 +476,36 @@ export const PropertiesDocker: React.FC<PropertiesDockerProps> = ({
               className="w-6 h-6 rounded cursor-pointer border border-zinc-400 bg-transparent"
             />
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1.5">
             <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>Width:</span>
-            <input
-              type="number"
-              min="0"
-              max="50"
-              value={properties.strokeWidth}
-              onChange={(e) => onUpdateProperties({ strokeWidth: Number(e.target.value) })}
-              className={`w-16 rounded px-1.5 py-0.5 text-right text-xs border ${inputClass}`}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onUpdateProperties({ strokeWidth: 0.25 })}
+                title="Reset to Hairline (0.25 pt)"
+                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                  properties.strokeWidth === 0.25
+                    ? 'bg-emerald-600/20 border-emerald-500 text-emerald-500 font-semibold'
+                    : isDark
+                    ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                    : 'bg-zinc-100 border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                Hairline
+              </button>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.25"
+                value={properties.strokeWidth}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  onUpdateProperties({ strokeWidth: Number.isFinite(val) ? Math.max(0, val) : 0 });
+                }}
+                className={`w-16 rounded px-1.5 py-0.5 text-right text-xs border ${inputClass}`}
+              />
+            </div>
           </div>
         </div>
       </div>

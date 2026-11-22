@@ -2,7 +2,7 @@ import React from 'react';
 
 export const IconPick: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-    {/* CorelDRAW classic pick arrow */}
+    {/* NuraDraw classic pick arrow */}
     <path d="M4 2.5 L4 21.5 L8.5 17 L12.5 22.5 L15 20.8 L11 15.3 L17.5 15.3 Z" stroke="#1f2226" strokeWidth="1" />
   </svg>
 );
@@ -20,7 +20,7 @@ export const IconShape: React.FC<{ className?: string }> = ({ className = 'w-4 h
 
 export const IconCrop: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none">
-    {/* CorelDRAW overlapping crop marks */}
+    {/* NuraDraw overlapping crop marks */}
     <path d="M8 3 L8 16 L21 16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square" />
     <path d="M3 8 L16 8 L16 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square" />
   </svg>
@@ -151,7 +151,7 @@ export const IconBSpline: React.FC<{ className?: string }> = ({ className = 'w-4
 
 export const IconPolyline: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none">
-    {/* Polyline angled tip & base bar matching CorelDRAW Polyline icon */}
+    {/* Polyline angled tip & base bar matching NuraDraw Polyline icon */}
     <line x1="12" y1="3" x2="12" y2="6.5" stroke="currentColor" strokeWidth="1.7" />
     <polygon points="12,6.5 18.5,12.5 18.5,18 5.5,18 5.5,12.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
     <rect x="5.5" y="18" width="13" height="2.8" fill="currentColor" />
@@ -195,14 +195,14 @@ export const IconEllipse: React.FC<{ className?: string }> = ({ className = 'w-4
 
 export const IconPolygon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none">
-    {/* CorelDRAW 6-sided hexagon outline */}
+    {/* NuraDraw 6-sided hexagon outline */}
     <polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="miter" />
   </svg>
 );
 
 export const IconText: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-    {/* CorelDRAW Signature Bold Vector 'A' Text Tool */}
+    {/* NuraDraw Signature Bold Vector 'A' Text Tool */}
     <path d="M12.5 2.5h-1L3.8 21.5h3.6l1.6-4.3h6l1.6 4.3h3.6L12.5 2.5zm-.5 11.2l2-5.4 2 5.4h-4z" />
   </svg>
 );

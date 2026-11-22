@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { CORELDRAW_PALETTE } from '../utils/palette';
+import { NURADRAW_PALETTE } from '../utils/palette';
 import { DocumentPaletteSwatch, ThemeMode, ToolType } from '../types';
 import { Pipette, ChevronUp, ChevronDown, ChevronsRight, ChevronsLeft, Plus, Slash } from 'lucide-react';
 
@@ -46,7 +46,7 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
 
   const swatchesToRender =
     paletteMode === 'grayscale'
-      ? CORELDRAW_PALETTE.slice(0, 12)
+      ? NURADRAW_PALETTE.slice(0, 12)
       : paletteMode === 'document'
       ? [
           { name: 'None (Transparent)', hex: 'transparent', cmyk: 'None' },
@@ -56,7 +56,7 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
             cmyk: sw.cmyk || sw.hex,
           })),
         ]
-      : CORELDRAW_PALETTE;
+      : NURADRAW_PALETTE;
 
   return (
     <aside

@@ -12,6 +12,7 @@ import {
   ViewQualityMode,
   DocumentPaletteSwatch,
   DimensionConfig,
+  DimensionData,
   CropToolsConfig,
   CropActionType,
   ZoomPresetMode,
@@ -19,11 +20,12 @@ import {
   ParametricState,
   GeometricConstraintType,
   DimConstraintKind,
+  SmartFillConfig,
 } from './types';
 import { socketService } from './services/socketService';
-import { CorelTopPanel } from './components/CorelTopPanel';
+import { NuraTopPanel } from './components/NuraTopPanel';
 import { Toolbox } from './components/Toolbox';
-import { CorelCanvas } from './components/CorelCanvas';
+import { NuraCanvas } from './components/NuraCanvas';
 import { ColorPalette } from './components/ColorPalette';
 import { DocumentPaletteBar } from './components/DocumentPaletteBar';
 import { PaletteEditorModal } from './components/PaletteEditorModal';
@@ -35,7 +37,14 @@ import { PageSetupModal } from './components/PageSetupModal';
 import { importFromJSON, exportAsSVG, exportAsPNG, exportAsPDF, exportAsNDR, exportAsDWG } from './utils/exportUtils';
 import { pxToUnit, UNITS_DATA } from './utils/units';
 import { separateObjectToCmykPlates } from './utils/cmykSeparation';
-import { ensureObjectId, getObjectLabel, alignObjects, AlignMode, AlignTarget } from './utils/canvasHelpers';
+import {
+  ensureObjectId,
+  getObjectLabel,
+  alignObjects,
+  AlignMode,
+  AlignTarget,
+  updateDimensionGroup,
+} from './utils/canvasHelpers';
 import { convertObjectToCurves } from './utils/curveEngine';
 import {
   getSymmetryTransforms,
@@ -43,7 +52,7 @@ import {
   transformSymmetryConfigByGroup,
 } from './utils/symmetryEngine';
 import { formatCmykComponents, normalizeHex, resolveColorName } from './utils/colorConversion';
-import { IconFitTextToPath, IconPowerClip, IconSymmetryCreate } from './components/CorelTopPanelIcons';
+import { IconFitTextToPath, IconPowerClip, IconSymmetryCreate } from './components/NuraTopPanelIcons';
 import { TextToolsModals, TextDialogKind } from './components/TextToolsModals';
 import { FitTextToPathModal } from './components/FitTextToPathModal';
 import { EffectToolsModal, EffectDialogState } from './components/EffectToolsModal';
@@ -117,10 +126,12 @@ export default function App() {
     showUnit: true,
     style: 'arrows',
     textPosition: 'above',
+    fontSize: 13,
+    fontFamily: 'Montserrat',
+    fontWeight: 'bold',
+    fontStyle: 'normal',
+    textColor: '#0f172a',
   });
-  const handleUpdateDimensionConfig = useCallback((cfg: Partial<DimensionConfig>) => {
-    setDimensionConfig((prev) => ({ ...prev, ...cfg }));
-  }, []);
 
   // Colors & Per-Document Palette
   const [currentFill, setCurrentFill] = useState<string>('#00a651');
@@ -181,7 +192,7 @@ export default function App() {
     angle: 0,
     fill: '#00a651',
     stroke: '#000000',
-    strokeWidth: 1,
+    strokeWidth: 0.25,
     strokeDashArray: [],
     opacity: 1,
     rx: 0,
@@ -219,7 +230,7 @@ export default function App() {
   const [showDocNavigator, setShowDocNavigator] = useState<boolean>(true);
   const [showScrollbars, setShowScrollbars] = useState<boolean>(true);
 
-  // CorelDRAW Snapping state (Page, Objects, Document Grid, AutoCAD Ortho)
+  // NuraDraw Snapping state (Page, Objects, Document Grid, AutoCAD Ortho)
   const [snapConfig, setSnapConfig] = useState<SnapConfig>({
     enabled: true,
     snapToGrid: false,
@@ -238,11 +249,11 @@ export default function App() {
 
   // Theme & Appearance state
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    return (localStorage.getItem('corel_theme') as ThemeMode) || 'light';
+    return (localStorage.getItem('nuradraw_theme') as ThemeMode) || 'light';
   });
   const [workspaceBg, setWorkspaceBg] = useState<string>(() => {
-    const saved = localStorage.getItem('corel_workspace_bg');
-    const savedTheme = (localStorage.getItem('corel_theme') as ThemeMode) || 'light';
+    const saved = localStorage.getItem('nuradraw_workspace_bg');
+    const savedTheme = (localStorage.getItem('nuradraw_theme') as ThemeMode) || 'light';
     if (savedTheme === 'dark' && (!saved || saved === '#1f2226')) {
       return '#3f4248';
     }
@@ -258,19 +269,19 @@ export default function App() {
 
   const handleThemeChange = (newTheme: ThemeMode) => {
     setTheme(newTheme);
-    localStorage.setItem('corel_theme', newTheme);
+    localStorage.setItem('nuradraw_theme', newTheme);
     if (newTheme === 'dark' && (workspaceBg === '#e9eaed' || workspaceBg === '#1f2226')) {
       setWorkspaceBg('#3f4248');
-      localStorage.setItem('corel_workspace_bg', '#3f4248');
+      localStorage.setItem('nuradraw_workspace_bg', '#3f4248');
     } else if (newTheme === 'light' && (workspaceBg === '#3f4248' || workspaceBg === '#1f2226')) {
       setWorkspaceBg('#e9eaed');
-      localStorage.setItem('corel_workspace_bg', '#e9eaed');
+      localStorage.setItem('nuradraw_workspace_bg', '#e9eaed');
     }
   };
 
   const handleWorkspaceBgChange = (color: string) => {
     setWorkspaceBg(color);
-    localStorage.setItem('corel_workspace_bg', color);
+    localStorage.setItem('nuradraw_workspace_bg', color);
   };
 
   // Dockers state - defaults to 'objects' open as shown in TraceDraw image_2b0a935b.png
@@ -309,7 +320,7 @@ export default function App() {
   const [fileToast, setFileToast] = useState<string | null>(null);
   const [recentFiles, setRecentFiles] = useState<{ name: string; savedAt: string; data?: string }[]>(() => {
     try {
-      const raw = localStorage.getItem('corel_recent_files');
+      const raw = localStorage.getItem('nuradraw_recent_files');
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -317,7 +328,7 @@ export default function App() {
   });
   const [cloudDocs, setCloudDocs] = useState<{ id: string; name: string; savedAt: string; pageConfig: PageConfig; canvasData: any }[]>(() => {
     try {
-      const raw = localStorage.getItem('corel_cloud_docs');
+      const raw = localStorage.getItem('nuradraw_cloud_docs');
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -325,7 +336,7 @@ export default function App() {
   });
   const [customTemplates, setCustomTemplates] = useState<{ id: string; name: string; pageConfig: PageConfig; canvasData: any }[]>(() => {
     try {
-      const raw = localStorage.getItem('corel_custom_templates');
+      const raw = localStorage.getItem('nuradraw_custom_templates');
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -351,7 +362,7 @@ export default function App() {
   // Real-time collaboration state
   const [roomId, setRoomId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('room') || 'studio-corel-1';
+    return params.get('room') || 'studio-nura-1';
   });
   const [currentUser, setCurrentUser] = useState<CollaboratorUser>(() =>
     socketService.getCurrentUser()
@@ -653,6 +664,18 @@ export default function App() {
     cropActionHandlerRef.current?.(action);
   }, []);
 
+  // Smart Fill Tool Configuration
+  const [smartFillConfig, setSmartFillConfig] = useState<SmartFillConfig>({
+    useFillColor: true,
+    fillColor: '#00a651',
+    outlineMode: 'none',
+    outlineWidth: 0,
+    outlineColor: '#000000',
+  });
+  const handleUpdateSmartFillConfig = useCallback((patch: Partial<SmartFillConfig>) => {
+    setSmartFillConfig((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   const zoomModeHandlerRef = useRef<((mode: ZoomPresetMode) => void) | null>(null);
   const handleRegisterZoomModeHandler = useCallback((handler: (mode: ZoomPresetMode) => void) => {
     zoomModeHandlerRef.current = handler;
@@ -736,6 +759,7 @@ export default function App() {
     'qrConfig',
     'isDimension',
     'dimensionKind',
+    'dimensionData',
     'perPixelTargetFind',
     'globalCompositeOperation',
     'isSymmetryGroup',
@@ -968,7 +992,7 @@ export default function App() {
     pushHistory('Delete');
   }, [canvas, pushHistory]);
 
-  // Undo (Ctrl+Z) / Redo (Ctrl+Shift+Z / Ctrl+Y) CorelDRAW implementation
+  // Undo (Ctrl+Z) / Redo (Ctrl+Shift+Z / Ctrl+Y) NuraDraw implementation
   const handleUndo = useCallback(async () => {
     if (!canvas || historyIndexRef.current <= 0) return;
     try {
@@ -1252,6 +1276,9 @@ export default function App() {
         opacity: group.opacity ?? 1,
         shadow: group.shadow,
         visible: group.visible !== false,
+        isDimension: (group as any).isDimension,
+        dimensionKind: (group as any).dimensionKind,
+        dimensionData: (group as any).dimensionData,
       };
 
       const outerObjectStates = canvas
@@ -1336,6 +1363,33 @@ export default function App() {
           });
           (rebuiltGroup as any).id = level.groupMeta.id;
           (rebuiltGroup as any).name = level.groupMeta.name;
+          if (level.groupMeta.isDimension) {
+            (rebuiltGroup as any).isDimension = true;
+            (rebuiltGroup as any).dimensionKind = level.groupMeta.dimensionKind;
+            const prevDimData = level.groupMeta.dimensionData as DimensionData | undefined;
+            const textChild = groupChildren.find((c: any) => c.type === 'i-text' || c.type === 'text') as any;
+            if (prevDimData && textChild) {
+              const c = rebuiltGroup.getCenterPoint();
+              (rebuiltGroup as any).dimensionData = {
+                ...prevDimData,
+                fontSize: textChild.fontSize || prevDimData.fontSize,
+                fontFamily: textChild.fontFamily || prevDimData.fontFamily,
+                fontWeight: String(textChild.fontWeight || prevDimData.fontWeight),
+                fontStyle: String(textChild.fontStyle || prevDimData.fontStyle),
+                underline: !!textChild.underline,
+                textColor: typeof textChild.fill === 'string' ? textChild.fill : prevDimData.textColor,
+                textBackgroundColor:
+                  typeof textChild.backgroundColor === 'string'
+                    ? textChild.backgroundColor
+                    : prevDimData.textBackgroundColor,
+                labelText: typeof textChild.text === 'string' ? textChild.text : prevDimData.labelText,
+                origCenterX: c.x,
+                origCenterY: c.y,
+              };
+            } else if (prevDimData) {
+              (rebuiltGroup as any).dimensionData = prevDimData;
+            }
+          }
           ensureObjectId(rebuiltGroup, level.groupName);
           canvas.insertAt(Math.min(level.insertIndex, canvas.getObjects().length), rebuiltGroup);
         }
@@ -2743,7 +2797,7 @@ export default function App() {
     }
   }, [canvas, properties.fontWeight, pushHistory, showToast]);
 
-  // Global Keyboard Shortcuts (All CorelDRAW standard shortcuts + F1-F11)
+  // Global Keyboard Shortcuts (All NuraDraw standard shortcuts + F1-F11)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // If typing inside an input element, select, or textarea, do not intercept
@@ -2776,14 +2830,14 @@ export default function App() {
         }
       }
 
-      // Ctrl+Z / Cmd+Z = Undo (CorelDRAW shortcut)
+      // Ctrl+Z / Cmd+Z = Undo (NuraDraw shortcut)
       if (isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         handleUndo();
         return;
       }
 
-      // Ctrl+Y / Cmd+Y = Redo (CorelDRAW shortcut)
+      // Ctrl+Y / Cmd+Y = Redo (NuraDraw shortcut)
       // Also support Ctrl+Shift+Z / Cmd+Shift+Z = Redo
       if (
         (isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'y' || e.key === 'Y')) ||
@@ -2946,7 +3000,7 @@ export default function App() {
         }
       }
 
-      // CorelDRAW Alignment Shortcuts (L, R, T, B, C, E, P) when object(s) selected
+      // NuraDraw Alignment Shortcuts (L, R, T, B, C, E, P) when object(s) selected
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && canvas?.getActiveObject()) {
         const activeObj = canvas.getActiveObject();
         if (activeObj && !(activeObj as any).isEditing) {
@@ -2989,7 +3043,7 @@ export default function App() {
         }
       }
 
-      // X = Eraser Tool (CorelDRAW shortcut)
+      // X = Eraser Tool (NuraDraw shortcut)
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'x' || e.key === 'X')) {
         e.preventDefault();
         setActiveTool('eraser');
@@ -3004,21 +3058,21 @@ export default function App() {
         return;
       }
 
-      // Alt+Z = Toggle Snap to Objects (CorelDRAW shortcut)
+      // Alt+Z = Toggle Snap to Objects (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         setSnapConfig((prev) => ({ ...prev, snapToObjects: !prev.snapToObjects }));
         return;
       }
 
-      // Alt+Y = Toggle Snap to Document Grid (CorelDRAW shortcut)
+      // Alt+Y = Toggle Snap to Document Grid (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && (e.key === 'y' || e.key === 'Y')) {
         e.preventDefault();
         setSnapConfig((prev) => ({ ...prev, snapToGrid: !prev.snapToGrid }));
         return;
       }
 
-      // Alt+F7 = Toggle Transform Docker (CorelDRAW shortcut)
+      // Alt+F7 = Toggle Transform Docker (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && (e.key === 'F7' || e.code === 'F7')) {
         e.preventDefault();
         setActiveDocker((prev) => (prev === 'transform' ? null : 'transform'));
@@ -3059,9 +3113,14 @@ export default function App() {
           void handleFinishSymmetry();
           return;
         }
+        if (activeTool === 'smart_fill') {
+          e.preventDefault();
+          setActiveTool('pick');
+          return;
+        }
       }
 
-      // '+' key (numpad plus or shift+'=') = Duplicate (CorelDRAW shortcut)
+      // '+' key (numpad plus or shift+'=') = Duplicate (NuraDraw shortcut)
       if (!isCtrlOrCmd && !e.altKey && (e.key === '+' || e.code === 'NumpadAdd')) {
         const activeObj = canvas?.getActiveObject();
         if (activeObj && !(activeObj as any).isEditing) {
@@ -3071,28 +3130,28 @@ export default function App() {
         }
       }
 
-      // Ctrl+Q / Cmd+Q = Convert to Curves (CorelDRAW shortcut)
+      // Ctrl+Q / Cmd+Q = Convert to Curves (NuraDraw shortcut)
       if (isCtrlOrCmd && !e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
         e.preventDefault();
         handleConvertToCurves();
         return;
       }
 
-      // Ctrl+K / Cmd+K = Break Apart (CorelDRAW shortcut)
+      // Ctrl+K / Cmd+K = Break Apart (NuraDraw shortcut)
       if (isCtrlOrCmd && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         handleBreakApart();
         return;
       }
 
-      // Alt+S = Create New Symmetry (CorelDRAW shortcut)
+      // Alt+S = Create New Symmetry (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         handleCreateSymmetry();
         return;
       }
 
-      // Alt+Enter = Properties Docker (CorelDRAW shortcut)
+      // Alt+Enter = Properties Docker (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && e.key === 'Enter') {
         e.preventDefault();
         handleOpenProperties();
@@ -3173,7 +3232,7 @@ export default function App() {
         return;
       }
 
-      // F1 = CorelDRAW Help (Hints & Shortcuts Docker)
+      // F1 = NuraDraw Help (Hints & Shortcuts Docker)
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'F1' || e.code === 'F1')) {
         e.preventDefault();
         e.stopPropagation();
@@ -3228,7 +3287,7 @@ export default function App() {
         return;
       }
 
-      // Shift+F8 or Alt+F8 = Toggle AutoCAD Ortho Mode (keeps F8 for CorelDRAW Text Tool)
+      // Shift+F8 or Alt+F8 = Toggle AutoCAD Ortho Mode (keeps F8 for NuraDraw Text Tool)
       if (!isCtrlOrCmd && (e.shiftKey || e.altKey) && (e.key === 'F8' || e.code === 'F8')) {
         e.preventDefault();
         e.stopPropagation();
@@ -3240,7 +3299,7 @@ export default function App() {
         return;
       }
 
-      // F8 = Text Tool (CorelDRAW standard shortcut)
+      // F8 = Text Tool (NuraDraw standard shortcut)
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'F8' || e.code === 'F8')) {
         e.preventDefault();
         setActiveTool('text');
@@ -3306,14 +3365,14 @@ export default function App() {
         return;
       }
 
-      // F10 = Shape Tool / Curve Node Editing (CorelDRAW standard shortcut)
+      // F10 = Shape Tool / Curve Node Editing (NuraDraw standard shortcut)
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'F10' || e.code === 'F10')) {
         e.preventDefault();
         setActiveTool((prev) => (prev === 'shape' ? 'pick' : 'shape'));
         return;
       }
 
-      // F11 = Fountain Fill Dialog (CorelDRAW standard shortcut)
+      // F11 = Fountain Fill Dialog (NuraDraw standard shortcut)
       if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'F11' || e.code === 'F11')) {
         e.preventDefault();
         e.stopPropagation();
@@ -3432,7 +3491,17 @@ export default function App() {
           sel.forEachObject((obj) => obj.set('stroke', newProps.stroke));
           setCurrentStroke(newProps.stroke);
         }
-        if (newProps.strokeWidth !== undefined) sel.forEachObject((obj) => obj.set('strokeWidth', newProps.strokeWidth));
+        if (newProps.strokeWidth !== undefined) {
+          sel.forEachObject((obj) => {
+            if ((obj as any).isConnector && obj.type === 'group') {
+              obj.set('strokeWidth', newProps.strokeWidth);
+              const firstLine = (obj as fabric.Group).getObjects().find((c) => c.type === 'line');
+              if (firstLine) firstLine.set({ strokeWidth: newProps.strokeWidth, strokeUniform: true });
+            } else {
+              obj.set({ strokeWidth: newProps.strokeWidth, strokeUniform: true });
+            }
+          });
+        }
         if (newProps.opacity !== undefined) sel.forEachObject((obj) => obj.set('opacity', newProps.opacity));
         sel.setCoords();
         canvas.renderAll();
@@ -3461,6 +3530,33 @@ export default function App() {
         }
       }
 
+      if ((selectedObject as any).isDimension && selectedObject.type === 'group') {
+        const dimPatch: Partial<DimensionData> = {};
+        if (newProps.fill !== undefined) dimPatch.textColor = newProps.fill;
+        if (newProps.stroke !== undefined) dimPatch.strokeColor = newProps.stroke;
+        if (newProps.fontFamily !== undefined) dimPatch.fontFamily = newProps.fontFamily;
+        if (newProps.fontSize !== undefined) dimPatch.fontSize = newProps.fontSize;
+        if (newProps.fontWeight !== undefined) dimPatch.fontWeight = newProps.fontWeight;
+        if (newProps.fontStyle !== undefined) dimPatch.fontStyle = newProps.fontStyle;
+        if (newProps.underline !== undefined) dimPatch.underline = newProps.underline;
+        if (newProps.textBackgroundColor !== undefined) {
+          dimPatch.textBackgroundColor = newProps.textBackgroundColor;
+        }
+        if (Object.keys(dimPatch).length > 0) {
+          const rebuilt = updateDimensionGroup(
+            canvas,
+            selectedObject as fabric.Group,
+            dimPatch,
+            pageConfig.units
+          );
+          if (rebuilt) {
+            setSelectedObject(rebuilt);
+            socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+            return;
+          }
+        }
+      }
+
       if (newProps.x !== undefined) selectedObject.set('left', newProps.x);
       if (newProps.y !== undefined) selectedObject.set('top', newProps.y);
 
@@ -3479,7 +3575,22 @@ export default function App() {
         selectedObject.set('stroke', newProps.stroke);
         setCurrentStroke(newProps.stroke);
       }
-      if (newProps.strokeWidth !== undefined) selectedObject.set('strokeWidth', newProps.strokeWidth);
+      if (newProps.strokeWidth !== undefined) {
+        if ((selectedObject as any).isConnector && selectedObject.type === 'group') {
+          selectedObject.set('strokeWidth', newProps.strokeWidth);
+          const firstLine = (selectedObject as fabric.Group).getObjects().find((c) => c.type === 'line');
+          if (firstLine) firstLine.set({ strokeWidth: newProps.strokeWidth, strokeUniform: true });
+        } else {
+          selectedObject.set({ strokeWidth: newProps.strokeWidth, strokeUniform: true });
+          const isText =
+            selectedObject.type === 'i-text' ||
+            selectedObject.type === 'text' ||
+            selectedObject.type === 'textbox';
+          if (isText && newProps.strokeWidth > 0 && !selectedObject.stroke) {
+            selectedObject.set('stroke', properties.stroke || '#000000');
+          }
+        }
+      }
       if (newProps.strokeDashArray !== undefined) selectedObject.set('strokeDashArray', newProps.strokeDashArray);
       if (newProps.opacity !== undefined) selectedObject.set('opacity', newProps.opacity);
 
@@ -3500,7 +3611,27 @@ export default function App() {
       if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
       socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
     },
-    [selectedObject, canvas, recordDocumentColor, syncSymmetryMirrors]
+    [selectedObject, canvas, pageConfig.units, recordDocumentColor, syncSymmetryMirrors]
+  );
+
+  const handleUpdateDimensionConfig = useCallback(
+    (cfg: Partial<DimensionConfig>) => {
+      setDimensionConfig((prev) => ({ ...prev, ...cfg }));
+      if (canvas && selectedObject && (selectedObject as any).isDimension && selectedObject.type === 'group') {
+        const rebuilt = updateDimensionGroup(
+          canvas,
+          selectedObject as fabric.Group,
+          cfg as Partial<DimensionData>,
+          pageConfig.units
+        );
+        if (rebuilt) {
+          setSelectedObject(rebuilt);
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          pushHistory('Update Dimension');
+        }
+      }
+    },
+    [canvas, selectedObject, pageConfig.units, pushHistory]
   );
 
   // Sample fill and stroke colors from canvas object without mutating any previously selected object
@@ -3526,6 +3657,13 @@ export default function App() {
   const handleSelectFill = (color: string) => {
     setCurrentFill(color);
     recordDocumentColor(color);
+    if (activeTool === 'smart_fill') {
+      setSmartFillConfig((prev) => ({
+        ...prev,
+        useFillColor: color !== 'transparent',
+        fillColor: color !== 'transparent' ? color : prev.fillColor,
+      }));
+    }
     if (selectedObject && canvas) {
       if (isTextOnPathObject(selectedObject)) {
         const rebuilt = reflowTextOnPathGroup(canvas, selectedObject as fabric.Group, { fill: color });
@@ -3552,6 +3690,12 @@ export default function App() {
   const handleSelectStroke = (color: string) => {
     setCurrentStroke(color);
     recordDocumentColor(color);
+    if (activeTool === 'smart_fill') {
+      setSmartFillConfig((prev) => ({
+        ...prev,
+        outlineColor: color !== 'transparent' ? color : prev.outlineColor,
+      }));
+    }
     if (selectedObject && canvas) {
       if (isTextOnPathObject(selectedObject)) {
         const curSw = ((selectedObject as any).textOnPathData?.strokeWidth || 0) > 0
@@ -3614,7 +3758,7 @@ export default function App() {
 
 
 
-  // PowerClip Implementation (Exact CorelDRAW Sub-pixel Geometry & Frame Clipping)
+  // PowerClip Implementation (Exact NuraDraw Sub-pixel Geometry & Frame Clipping)
   const createPowerClip = useCallback(
     async (content: fabric.FabricObject, container: fabric.FabricObject, isFromEditMode = false) => {
       if (!canvas) return;
@@ -4665,7 +4809,10 @@ export default function App() {
   const handleOpenImageAdjustmentLab = useCallback(() => {
     if (!canvas) return;
     const activeObj = canvas.getActiveObject();
-    if (!activeObj) return;
+    if (!activeObj) {
+      showToast('Select an object or image first');
+      return;
+    }
     try {
       setAdjPreviewUrl(activeObj.toDataURL({ format: 'png' }));
     } catch {
@@ -4990,13 +5137,13 @@ export default function App() {
     setRecentFiles((prev) => {
       const next = [entry, ...prev.filter((r) => r.name !== name)].slice(0, 8);
       try {
-        localStorage.setItem('corel_recent_files', JSON.stringify(next));
+        localStorage.setItem('nuradraw_recent_files', JSON.stringify(next));
       } catch {}
       return next;
     });
   }, []);
 
-  // Open project file (.ndr / .corelweb / .json / .svg)
+  // Open project file (.ndr / .nuradraw / .json / .svg)
   const handleOpenJSONFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !canvas) return;
@@ -5034,7 +5181,7 @@ export default function App() {
     try {
       if (
         lower.endsWith('.ndr') ||
-        lower.endsWith('.corelweb') ||
+        lower.endsWith('.nuradraw') ||
         lower.endsWith('.json') ||
         lower.endsWith('.dwg') ||
         lower.endsWith('.dxf')
@@ -5132,7 +5279,7 @@ export default function App() {
     setCloudDocs((prev) => {
       const next = [entry, ...prev.filter((d) => d.name !== entry.name)].slice(0, 20);
       try {
-        localStorage.setItem('corel_cloud_docs', JSON.stringify(next));
+        localStorage.setItem('nuradraw_cloud_docs', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -5152,7 +5299,7 @@ export default function App() {
     setCustomTemplates((prev) => {
       const next = [tmpl, ...prev].slice(0, 12);
       try {
-        localStorage.setItem('corel_custom_templates', JSON.stringify(next));
+        localStorage.setItem('nuradraw_custom_templates', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -5410,7 +5557,7 @@ export default function App() {
     setActiveDocker((prev) => (prev === id ? null : id));
   };
 
-  // Complete CorelDRAW Text Menu Actions
+  // Complete NuraDraw Text Menu Actions
   const handleTextAction = useCallback(
     (action: string, payload?: any) => {
       if (!canvas) return;
@@ -5757,7 +5904,7 @@ export default function App() {
   const handleTextActionRef = useRef(handleTextAction);
   handleTextActionRef.current = handleTextAction;
 
-  // CorelDRAW Effects Menu Handler
+  // NuraDraw Effects Menu Handler
   const handleEffectAction = useCallback(
     async (action: string, payload?: any) => {
       if (!canvas) return;
@@ -5776,19 +5923,31 @@ export default function App() {
         }
         try {
           const bound = active.getBoundingRect();
-          const dataUrl = active.toDataURL({ format: 'png', multiplier: 2 });
+          const dataUrl = active.toDataURL({
+            format: 'png',
+            multiplier: 2,
+            withoutShadow: false,
+            enableRetinaScaling: false,
+          });
           const img = await fabric.FabricImage.fromURL(dataUrl);
           img.set({
             left: bound.left,
             top: bound.top,
-            scaleX: 0.5,
-            scaleY: 0.5,
+            scaleX: bound.width / Math.max(1, img.width || 1),
+            scaleY: bound.height / Math.max(1, img.height || 1),
             originX: 'left',
             originY: 'top',
             objectCaching: false,
           });
           ensureObjectId(img, 'Flattened Effect');
-          canvas.remove(active);
+          if (active.type === 'activeselection') {
+            const items = [...(active as fabric.ActiveSelection).getObjects()];
+            canvas.discardActiveObject();
+            items.forEach((o) => canvas.remove(o));
+          } else {
+            canvas.discardActiveObject();
+            canvas.remove(active);
+          }
           canvas.add(img);
           canvas.setActiveObject(img);
           setSelectedObject(img);
@@ -5872,7 +6031,7 @@ export default function App() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ndr,.corelweb,.json,.svg,.dwg,.dxf"
+        accept=".ndr,.nuradraw,.json,.svg,.dwg,.dxf"
         onChange={handleOpenJSONFile}
         className="hidden"
       />
@@ -5880,7 +6039,7 @@ export default function App() {
       <input
         ref={importInputRef}
         type="file"
-        accept="image/*,.svg,.ndr,.corelweb,.json,.dwg,.dxf"
+        accept="image/*,.svg,.ndr,.nuradraw,.json,.dwg,.dxf"
         onChange={handleImportMediaFile}
         className="hidden"
       />
@@ -5901,8 +6060,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Complete CorelDRAW Top Panel (Menu Bar, Standard Command Bar, Contextual Property Bar) */}
-      <CorelTopPanel
+      {/* Complete NuraDraw Top Panel (Menu Bar, Standard Command Bar, Contextual Property Bar) */}
+      <NuraTopPanel
         documentName={documentName}
         onDocumentNameChange={setDocumentName}
         canUndo={canUndo}
@@ -6087,6 +6246,8 @@ export default function App() {
         cropToolsConfig={cropToolsConfig}
         onUpdateCropToolsConfig={handleUpdateCropToolsConfig}
         onCropAction={handleCropAction}
+        smartFillConfig={smartFillConfig}
+        onUpdateSmartFillConfig={handleUpdateSmartFillConfig}
         onAutofitPage={handleAutofitPage}
         currentFill={currentFill}
         currentStroke={currentStroke}
@@ -6118,7 +6279,7 @@ export default function App() {
         />
 
         {/* Center Canvas Area with Rulers & Collaborator Cursors */}
-        <CorelCanvas
+        <NuraCanvas
           activeTool={activeTool}
           onSelectTool={setActiveTool}
           pageConfig={pageConfig}
@@ -6231,6 +6392,8 @@ export default function App() {
           onUpdateCropToolsConfig={handleUpdateCropToolsConfig}
           onRegisterCropActionHandler={handleRegisterCropActionHandler}
           onRegisterZoomModeHandler={handleRegisterZoomModeHandler}
+          smartFillConfig={smartFillConfig}
+          onNotifyToast={showToast}
           viewQualityMode={viewQualityMode}
           proofColors={proofColors}
           simulateOverprints={simulateOverprints}
@@ -6538,7 +6701,7 @@ export default function App() {
           }}
         />
 
-        {/* Right-Side Vertical CorelDRAW Color Palette (L-Click Fill, R-Click Outline) */}
+        {/* Right-Side Vertical NuraDraw Color Palette (L-Click Fill, R-Click Outline) */}
         <ColorPalette
           currentFill={currentFill}
           currentStroke={currentStroke}
@@ -6758,7 +6921,7 @@ export default function App() {
         onToast={showToast}
       />
 
-      {/* CorelDRAW Fountain Fill Modal (F11) */}
+      {/* NuraDraw Fountain Fill Modal (F11) */}
       <FountainFillModal
         isOpen={showFountainFillModal}
         onClose={() => setShowFountainFillModal(false)}
@@ -6800,7 +6963,7 @@ export default function App() {
         theme={theme}
       />
 
-      {/* CorelDRAW Settings / Options Modal */}
+      {/* NuraDraw Settings / Options Modal */}
       <SettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -6814,7 +6977,7 @@ export default function App() {
         onUpdateUserName={handleUpdateUserName}
       />
 
-      {/* CorelDRAW Page Setup Modal */}
+      {/* NuraDraw Page Setup Modal */}
       <PageSetupModal
         isOpen={showPageSetupModal}
         onClose={() => setShowPageSetupModal(false)}
@@ -7040,7 +7203,7 @@ export default function App() {
                   onChange={() => setPasteSpecialFormat('vector')}
                 />
                 <div>
-                  <div className="font-semibold text-white">CorelDRAW Vector Object</div>
+                  <div className="font-semibold text-white">NuraDraw Vector Object</div>
                   <div className="text-[11px] text-zinc-400">Paste full fill, outline, curves & attributes</div>
                 </div>
               </label>

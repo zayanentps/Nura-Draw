@@ -150,7 +150,7 @@ export async function generateRandomFillerGroup(
     angleDeg: number;
   }[] = [];
 
-  // Allow centers slightly near/past edge so border shapes clip nicely like CorelDRAW Random Filler
+  // Allow centers slightly near/past edge so border shapes clip nicely like NuraDraw Random Filler
   const maxAllowedItems = 280;
   const maxAttempts = 2200;
   let consecutiveMisses = 0;

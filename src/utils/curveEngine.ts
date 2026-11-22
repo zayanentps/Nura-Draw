@@ -196,7 +196,7 @@ export function normalizePathToCubic(pathObj: fabric.Path) {
 }
 
 /**
- * Converts Rect, Circle, Ellipse, Polygon, Polyline, or Line into an editable CorelDRAW Curve (fabric.Path).
+ * Converts Rect, Circle, Ellipse, Polygon, Polyline, or Line into an editable NuraDraw Curve (fabric.Path).
  */
 export function convertObjectToCurves(obj: fabric.FabricObject): fabric.Path | null {
   if (!obj) return null;
@@ -669,7 +669,7 @@ export function moveCurveHandle(
 }
 
 /**
- * Direct CorelDRAW segment bending: drags a line or curve segment directly to reshape it.
+ * Direct NuraDraw segment bending: drags a line or curve segment directly to reshape it.
  * Automatically converts straight L (or Z closing) segments to cubic C curves.
  */
 export function dragCurveSegment(
@@ -1001,7 +1001,7 @@ export function setNodesType(
 }
 
 /**
- * CorelDRAW Auto-Close Curve / Toggle Closed Loop.
+ * NuraDraw Auto-Close Curve / Toggle Closed Loop.
  */
 export function toggleCloseCurve(pathObj: fabric.Path) {
   normalizePathToCubic(pathObj);
@@ -1017,7 +1017,7 @@ export function toggleCloseCurve(pathObj: fabric.Path) {
 }
 
 /**
- * CorelDRAW Break Curve at selected node (opens closed path or splits into two open subpaths).
+ * NuraDraw Break Curve at selected node (opens closed path or splits into two open subpaths).
  */
 export function breakCurveAtNodes(pathObj: fabric.Path, nodeCmdIndices: number[]) {
   if (nodeCmdIndices.length === 0) return;
@@ -1052,7 +1052,7 @@ export function breakCurveAtNodes(pathObj: fabric.Path, nodeCmdIndices: number[]
 }
 
 /**
- * CorelDRAW Join Two Nodes: merges two selected open endpoints or closes gap between them.
+ * NuraDraw Join Two Nodes: merges two selected open endpoints or closes gap between them.
  */
 export function joinCurveNodes(pathObj: fabric.Path, nodeCmdIndices: number[]) {
   if (nodeCmdIndices.length < 2) return;
@@ -1079,7 +1079,7 @@ export function joinCurveNodes(pathObj: fabric.Path, nodeCmdIndices: number[]) {
 }
 
 /**
- * CorelDRAW Reverse Subpath Direction.
+ * NuraDraw Reverse Subpath Direction.
  */
 export function reverseCurveDirection(pathObj: fabric.Path) {
   normalizePathToCubic(pathObj);
@@ -1181,7 +1181,7 @@ export function extendOpenCurveToPoint(
 }
 
 /**
- * CorelDRAW Virtual Segment Delete: removes a clicked segment from a path.
+ * NuraDraw Virtual Segment Delete: removes a clicked segment from a path.
  * If the subpath is closed, opens it smoothly by removing the clicked edge and keeping remaining edges connected.
  */
 export function deleteSegmentFromPath(

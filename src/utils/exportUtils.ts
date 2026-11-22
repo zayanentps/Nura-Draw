@@ -3,7 +3,7 @@ import jsPDF, { GState } from 'jspdf';
 import { PageConfig, ParametricState } from '../types';
 import { disableObjectCaching } from './canvasHelpers';
 
-export interface CorelExportFormat {
+export interface NuraExportFormat {
   id: string;
   short: string;
   ext: string;
@@ -13,10 +13,10 @@ export interface CorelExportFormat {
   kind: 'pdf' | 'vector' | 'raster' | 'cad' | 'json' | 'document';
 }
 
-// Exact CorelDRAW "Save as type" list including .ndr native vector project format
-export const COREL_EXPORT_FORMATS: CorelExportFormat[] = [
+// NuraDraw "Save as type" list including .ndr native vector project format
+export const NURADRAW_EXPORT_FORMATS: NuraExportFormat[] = [
   // Pinned top common formats
-  { id: 'ndr', short: 'NDR', ext: 'ndr', label: 'NDR - Nura Draw (.ndr)', mime: 'image/svg+xml', pinned: true, kind: 'vector' },
+  { id: 'ndr', short: 'NDR', ext: 'ndr', label: 'NDR - NuraDraw Native (.ndr)', mime: 'image/svg+xml', pinned: true, kind: 'vector' },
   { id: 'pdf', short: 'PDF', ext: 'pdf', label: 'PDF - Adobe Portable Document Format', mime: 'application/pdf', pinned: true, kind: 'pdf' },
   { id: 'svg', short: 'SVG', ext: 'svg', label: 'SVG - Scalable Vector Graphics', mime: 'image/svg+xml', pinned: true, kind: 'vector' },
   { id: 'jpg', short: 'JPG', ext: 'jpg', label: 'JPG - JPEG Bitmaps', mime: 'image/jpeg', pinned: true, kind: 'raster' },
@@ -24,17 +24,13 @@ export const COREL_EXPORT_FORMATS: CorelExportFormat[] = [
   { id: 'ai', short: 'AI', ext: 'ai', label: 'AI - Adobe Illustrator', mime: 'application/postscript', pinned: true, kind: 'vector' },
   { id: 'dwg', short: 'DWG', ext: 'dwg', label: 'DWG - AutoCAD Drawing (.dwg)', mime: 'application/acad', pinned: true, kind: 'cad' },
 
-  // Full CorelDRAW format list
+  // Full NuraDraw format list
   { id: 'ai_full', short: 'AI', ext: 'ai', label: 'AI - Adobe Illustrator', mime: 'application/postscript', kind: 'vector' },
   { id: 'pfb', short: 'PFB', ext: 'pfb', label: 'PFB - Adobe Type 1 Font', mime: 'application/octet-stream', kind: 'document' },
   { id: 'bmp_win', short: 'BMP', ext: 'bmp', label: 'BMP - Windows Bitmap', mime: 'image/bmp', kind: 'raster' },
   { id: 'bmp_os2', short: 'BMP', ext: 'bmp', label: 'BMP - OS/2 Bitmap', mime: 'image/bmp', kind: 'raster' },
   { id: 'cal', short: 'CAL', ext: 'cal', label: 'CAL - CALS Compressed Bitmap', mime: 'application/octet-stream', kind: 'raster' },
   { id: 'cgm', short: 'CGM', ext: 'cgm', label: 'CGM - Computer Graphics Metafile', mime: 'image/cgm', kind: 'vector' },
-  { id: 'cmx', short: 'CMX', ext: 'cmx', label: 'CMX - Corel Presentation Exchange', mime: 'application/octet-stream', kind: 'vector' },
-  { id: 'cmx_legacy', short: 'CMX', ext: 'cmx', label: 'CMX - Corel Presentation Exchange Legacy', mime: 'application/octet-stream', kind: 'vector' },
-  { id: 'cpt', short: 'CPT', ext: 'cpt', label: 'CPT - Corel PHOTO-PAINT Image', mime: 'application/octet-stream', kind: 'raster' },
-  { id: 'cpt78', short: 'CPT', ext: 'cpt', label: 'CPT - Corel PHOTO-PAINT 7/8 Image', mime: 'application/octet-stream', kind: 'raster' },
   { id: 'cur', short: 'CUR', ext: 'cur', label: 'CUR - Windows 3.x/NT Cursor Resource', mime: 'image/x-icon', kind: 'raster' },
   { id: 'doc', short: 'DOC', ext: 'doc', label: 'DOC - MS Word for Windows 6/7', mime: 'application/msword', kind: 'document' },
   { id: 'dxf', short: 'DXF', ext: 'dxf', label: 'DXF - AutoCAD', mime: 'application/dxf', kind: 'cad' },
@@ -49,7 +45,7 @@ export const COREL_EXPORT_FORMATS: CorelExportFormat[] = [
   { id: 'jpg_full', short: 'JPG', ext: 'jpg', label: 'JPG - JPEG Bitmaps', mime: 'image/jpeg', kind: 'raster' },
   { id: 'mac', short: 'MAC', ext: 'mac', label: 'MAC - MACPaint Bitmap', mime: 'application/octet-stream', kind: 'raster' },
   { id: 'webp', short: 'WEBP', ext: 'webp', label: 'WEBP - WebP Raster Image', mime: 'image/webp', kind: 'raster' },
-  { id: 'corelweb', short: 'CORELWEB', ext: 'corelweb', label: 'CORELWEB - TraceDraw Project JSON', mime: 'application/json', kind: 'json' },
+  { id: 'nuradraw', short: 'NURADRAW', ext: 'nuradraw', label: 'NURADRAW - NuraDraw Project JSON', mime: 'application/json', kind: 'json' },
 ];
 
 export interface AdvancedExportSettings {
@@ -1378,7 +1374,7 @@ export function buildPdfBlob(
 export async function exportWithSettings(
   canvas: fabric.Canvas,
   pageConfig: PageConfig,
-  format: CorelExportFormat,
+  format: NuraExportFormat,
   filename: string,
   settings: AdvancedExportSettings,
   fileHandle?: any | null,
@@ -1472,7 +1468,7 @@ export async function exportWithSettings(
     );
     blob = new Blob([svgString], { type: format.mime });
   } else {
-    // Raster fallback (png / gif / cpt / cal / img / mac / pfb)
+    // Raster fallback (png / gif / cal / img / mac / pfb)
     const el = await renderCanvasToRealElement(
       canvas,
       bounds,
@@ -1666,7 +1662,7 @@ export async function importFromJSON(
       }
     }
 
-    // 2. Fallback: raw JSON (.ndr / .corelweb / .json)
+    // 2. Fallback: raw JSON (.ndr / .nuradraw / .json)
     if (!data && trimmed.startsWith('{')) {
       data = JSON.parse(trimmed);
     }

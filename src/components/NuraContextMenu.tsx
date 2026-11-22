@@ -7,9 +7,9 @@ import {
   IconSymmetryFinish,
   IconSymmetryRemove,
   IconSymmetryBreak,
-} from './CorelTopPanelIcons';
+} from './NuraTopPanelIcons';
 
-export interface CorelContextMenuProps {
+export interface NuraContextMenuProps {
   x: number;
   y: number;
   selectedObject: fabric.FabricObject | null;
@@ -64,7 +64,7 @@ export interface CorelContextMenuProps {
   onCreateSymbol?: () => void;
 }
 
-export const CorelContextMenu: React.FC<CorelContextMenuProps> = ({
+export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
   x,
   y,
   selectedObject,

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pipette, RefreshCw, X } from 'lucide-react';
 import { DocumentPaletteSwatch } from '../types';
-import { CORELDRAW_PALETTE } from '../utils/palette';
+import { NURADRAW_PALETTE } from '../utils/palette';
 import {
   clamp,
   cmykToRgb,
@@ -335,10 +335,10 @@ export const SelectColorModal: React.FC<SelectColorModalProps> = ({
 
   const paletteSwatches =
     paletteSource === 'grayscale'
-      ? CORELDRAW_PALETTE.slice(1, 12)
+      ? NURADRAW_PALETTE.slice(1, 12)
       : paletteSource === 'document'
       ? documentSwatches.map((s) => ({ name: s.name, hex: s.hex, cmyk: s.cmyk || formatCmykComponents(s.hex) }))
-      : CORELDRAW_PALETTE.filter((s) => s.hex !== 'transparent');
+      : NURADRAW_PALETTE.filter((s) => s.hex !== 'transparent');
 
   return (
     <div
@@ -553,13 +553,13 @@ export const SelectColorModal: React.FC<SelectColorModalProps> = ({
             <div className="flex mb-3">
               <input
                 type="text"
-                list="corel-named-swatches"
+                list="nura-named-swatches"
                 value={colorName}
                 onChange={(e) => {
                   const val = e.target.value;
                   setColorName(val);
                   setNameEdited(true);
-                  const found = CORELDRAW_PALETTE.find(
+                  const found = NURADRAW_PALETTE.find(
                     (p) => p.hex !== 'transparent' && p.name.toLowerCase() === val.trim().toLowerCase()
                   );
                   if (found) {
@@ -569,8 +569,8 @@ export const SelectColorModal: React.FC<SelectColorModalProps> = ({
                 }}
                 className="flex-1 h-[23px] px-1.5 bg-white border border-[#8e8e8e] text-[12px] text-[#111] outline-none focus:border-[#0078d7]"
               />
-              <datalist id="corel-named-swatches">
-                {CORELDRAW_PALETTE.filter((p) => p.hex !== 'transparent').map((p) => (
+              <datalist id="nura-named-swatches">
+                {NURADRAW_PALETTE.filter((p) => p.hex !== 'transparent').map((p) => (
                   <option key={p.name} value={p.name} />
                 ))}
               </datalist>

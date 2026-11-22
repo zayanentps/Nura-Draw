@@ -49,6 +49,45 @@ export interface DimensionConfig {
   showUnit: boolean;
   style: 'arrows' | 'ticks';
   textPosition: 'above' | 'center';
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  fontStyle?: string;
+  textColor?: string;
+  strokeColor?: string;
+}
+
+export interface DimensionData {
+  kind: 'parallel' | 'horizontal' | 'vertical' | 'segment' | 'angular' | 'callout';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  offset?: number;
+  placeX?: number;
+  placeY?: number;
+  vx?: number;
+  vy?: number;
+  p3x?: number;
+  labelText?: string;
+  precision: 0 | 1 | 2 | 3;
+  unit: 'auto' | 'px' | 'mm' | 'cm' | 'in' | 'pt';
+  showUnit: boolean;
+  style: 'arrows' | 'ticks';
+  textPosition: 'above' | 'center';
+  strokeColor: string;
+  textColor: string;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: string;
+  fontStyle: string;
+  underline?: boolean;
+  textBackgroundColor?: string;
+  origCenterX?: number;
+  origCenterY?: number;
+  origScaleX?: number;
+  origScaleY?: number;
+  origAngle?: number;
 }
 
 export interface CropRegion {
@@ -63,6 +102,14 @@ export interface CropToolsConfig {
   eraserNib: 'round' | 'square';
   knifeAutoGap: boolean;
   cropRegion: CropRegion | null;
+}
+
+export interface SmartFillConfig {
+  useFillColor: boolean;
+  fillColor: string;
+  outlineMode: 'none' | 'specify';
+  outlineWidth: number;
+  outlineColor: string;
 }
 
 export type CropActionType = 'apply_crop' | 'clear_crop';

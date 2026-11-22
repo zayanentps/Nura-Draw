@@ -26,7 +26,7 @@ const FOUNTAIN_PRESETS: Array<{
   useMid: boolean;
   angle: number;
 }> = [
-  { name: 'Corel Green', type: 'linear', start: '#00a651', mid: '#8dc63f', end: '#fff200', useMid: false, angle: 0 },
+  { name: 'Nura Green', type: 'linear', start: '#00a651', mid: '#8dc63f', end: '#fff200', useMid: false, angle: 0 },
   { name: 'Sunset Gold', type: 'linear', start: '#ed1c24', mid: '#f7941d', end: '#fff200', useMid: true, angle: 45 },
   { name: 'Ocean Deep', type: 'linear', start: '#00aeef', mid: '#0072bc', end: '#1b1464', useMid: false, angle: 90 },
   { name: 'Radial Glow', type: 'radial', start: '#fff799', mid: '#f7941d', end: '#ed1c24', useMid: false, angle: 0 },
