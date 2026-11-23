@@ -87,7 +87,16 @@ import {
   IconSymmetryFinish,
   IconSymmetryRemove,
   IconSymmetryBreak,
+  IconShapeCombine,
+  IconShapeWeld,
+  IconShapeTrim,
+  IconShapeIntersect,
+  IconShapeSimplify,
+  IconShapeFrontMinusBack,
+  IconShapeBackMinusFront,
+  IconShapeBoundary,
 } from './NuraTopPanelIcons';
+import type { ShapeOperation } from '../utils/shapingEngine';
 import {
   Undo2,
   Redo2,
@@ -390,6 +399,8 @@ interface NuraTopPanelProps {
   // Smart Fill Tool Settings
   smartFillConfig?: SmartFillConfig;
   onUpdateSmartFillConfig?: (cfg: Partial<SmartFillConfig>) => void;
+  // Multi-object Shaping & Combine
+  onShapeOperation?: (op: ShapeOperation) => void;
 }
 
 const STROKE_WIDTHS = [
@@ -613,6 +624,7 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
     outlineColor: '#000000',
   },
   onUpdateSmartFillConfig,
+  onShapeOperation,
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeFileSubmenu, setActiveFileSubmenu] = useState<string | null>(null);
@@ -2843,6 +2855,48 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                     <span>Convert to Curves</span>
                     <span className="font-mono text-[10px] opacity-70">Ctrl+Q</span>
                   </button>
+                  <button
+                    onClick={() => {
+                      onShapeOperation?.('combine');
+                      setActiveMenu(null);
+                    }}
+                    disabled={!selectedObject || selectedObject.type !== 'activeselection'}
+                    className="w-full text-left px-3 py-1 hover:bg-[#0078d7] hover:text-white flex justify-between items-center disabled:opacity-40"
+                  >
+                    <span>Combine</span>
+                    <span className="font-mono text-[10px] opacity-70">Ctrl+L</span>
+                  </button>
+
+                  <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
+
+                  {/* Shaping */}
+                  <div className="px-3 py-0.5 font-semibold text-[10px] uppercase text-zinc-400">Shaping</div>
+                  <div className="grid grid-cols-4 gap-1 px-2.5 py-1">
+                    {(
+                      [
+                        { op: 'weld' as ShapeOperation, label: 'Weld', Icon: IconShapeWeld },
+                        { op: 'trim' as ShapeOperation, label: 'Trim', Icon: IconShapeTrim },
+                        { op: 'intersect' as ShapeOperation, label: 'Intersect', Icon: IconShapeIntersect },
+                        { op: 'simplify' as ShapeOperation, label: 'Simplify', Icon: IconShapeSimplify },
+                        { op: 'front_minus_back' as ShapeOperation, label: 'Front Minus Back', Icon: IconShapeFrontMinusBack },
+                        { op: 'back_minus_front' as ShapeOperation, label: 'Back Minus Front', Icon: IconShapeBackMinusFront },
+                        { op: 'create_boundary' as ShapeOperation, label: 'Create Boundary', Icon: IconShapeBoundary },
+                      ] as const
+                    ).map(({ op, label, Icon }) => (
+                      <button
+                        key={op}
+                        onClick={() => {
+                          onShapeOperation?.(op);
+                          setActiveMenu(null);
+                        }}
+                        disabled={!selectedObject || selectedObject.type !== 'activeselection'}
+                        title={label}
+                        className="p-1.5 rounded-xs hover:bg-[#0078d7] hover:text-white flex items-center justify-center disabled:opacity-35 cursor-pointer"
+                      >
+                        <Icon className="w-4 h-4" />
+                      </button>
+                    ))}
+                  </div>
 
                   <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
 
@@ -5429,9 +5483,9 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                 : 'hover:bg-[#dbe0e6] border-transparent text-zinc-600'
             }`}
           >
-            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <path d="M3 2v11h11" strokeLinecap="square" />
-              <path d="M3 9h4v4" strokeWidth="1.2" opacity="0.85" />
+            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter">
+              <path d="M3 2.5V13H13.5" />
+              <path d="M3 8.5H7.5V13" strokeWidth="1.2" opacity="0.85" />
             </svg>
             <span>ORTHO</span>
           </button>
@@ -5643,10 +5697,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-900'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 12 C5 4, 11 4, 14 12" />
-                      <circle cx="8" cy="6" r="2" fill="#16a34a" stroke="#14532d" />
-                      <path d="M12.5 1.5v4M10.5 3.5h4" stroke="#16a34a" strokeWidth="1.6" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12C5 4.5 11 4.5 14 12" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="6.4" y="4.8" width="3.2" height="3.2" fill="#107C10" stroke="#FFFFFF" strokeWidth="0.6" />
+                      <path d="M12.5 1.8V5.4M10.7 3.6H14.3" stroke="#107C10" strokeWidth="1.55" strokeLinecap="square" />
                     </svg>
                     <span className="text-[11px]">{curveEditState.addNodeMode ? '+ Add Point (ON)' : '+ Add Point'}</span>
                   </button>
@@ -5655,10 +5709,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                     title="Insert Node at Midpoint of Selected Segment"
                     className="px-1.5 h-6 flex items-center gap-1 hover:bg-[#dbe0e6] rounded-xs text-zinc-900 font-medium cursor-pointer"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 12 C5 4, 11 4, 14 12" />
-                      <rect x="6.5" y="4.5" width="3" height="3" fill="#0078d7" stroke="#0f172a" />
-                      <path d="M12 2v4M10 4h4" stroke="#16a34a" strokeWidth="1.5" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12C5 4.5 11 4.5 14 12" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="6.5" y="4.5" width="3" height="3" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+                      <path d="M12.2 2V5.5M10.5 3.75H14" stroke="#107C10" strokeWidth="1.5" strokeLinecap="square" />
                     </svg>
                     <span className="text-[11px]">Add Mid</span>
                   </button>
@@ -5668,10 +5722,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                     title="Delete Selected Nodes (Del / Double-click node)"
                     className="px-1.5 h-6 flex items-center gap-1 hover:bg-[#dbe0e6] disabled:opacity-40 rounded-xs text-zinc-900 font-medium cursor-pointer"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 12 L8 6 L14 12" />
-                      <rect x="6.5" y="4.5" width="3" height="3" fill="#ef4444" stroke="#7f1d1d" />
-                      <path d="M10 4h4" stroke="#dc2626" strokeWidth="1.5" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12L8 6L14 12" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="6.5" y="4.5" width="3" height="3" fill="#E81123" stroke="#FFFFFF" strokeWidth="0.6" />
+                      <path d="M10.5 3.8H14" stroke="#E81123" strokeWidth="1.5" strokeLinecap="square" />
                     </svg>
                     <span className="text-[11px]">Delete</span>
                   </button>
@@ -5685,9 +5739,9 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                     title="Join Two Nodes"
                     className="px-1.5 h-6 flex items-center gap-1 hover:bg-[#dbe0e6] disabled:opacity-40 rounded-xs text-zinc-900 cursor-pointer"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-                      <path d="M2 12 L6 8 M14 12 L10 8" />
-                      <rect x="6.5" y="6.5" width="3" height="3" fill="#0078d7" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12L6.5 8M14 12L9.5 8" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="6.5" y="6.5" width="3" height="3" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span className="text-[11px]">Join</span>
                   </button>
@@ -5697,10 +5751,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                     title="Break Curve at Selected Node"
                     className="px-1.5 h-6 flex items-center gap-1 hover:bg-[#dbe0e6] disabled:opacity-40 rounded-xs text-zinc-900 cursor-pointer"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-                      <path d="M2 11 L6 7 M10 7 L14 11" />
-                      <rect x="4.5" y="5.5" width="2.5" height="2.5" fill="#fff" />
-                      <rect x="9" y="5.5" width="2.5" height="2.5" fill="#fff" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 11.5L5.5 8M10.5 8L14 11.5" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="4.5" y="5.5" width="2.6" height="2.6" fill="#50E6FF" stroke="#0078D4" strokeWidth="0.9" />
+                      <rect x="8.9" y="5.5" width="2.6" height="2.6" fill="#50E6FF" stroke="#0078D4" strokeWidth="0.9" />
                     </svg>
                     <span className="text-[11px]">Break</span>
                   </button>
@@ -5719,10 +5773,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-800'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <line x1="3" y1="12" x2="13" y2="4" />
-                      <rect x="1.5" y="10.5" width="3" height="3" fill="#fff" />
-                      <rect x="11.5" y="2.5" width="3" height="3" fill="#fff" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <line x1="3.5" y1="12.5" x2="12.5" y2="3.5" stroke="currentColor" strokeWidth="1.35" />
+                      <rect x="1.8" y="11.2" width="2.8" height="2.8" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+                      <rect x="11.4" y="1.8" width="2.8" height="2.8" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span>To Line</span>
                   </button>
@@ -5735,10 +5789,10 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-800'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M3 12 C5 3, 11 13, 13 4" />
-                      <rect x="1.5" y="10.5" width="3" height="3" fill="#fff" />
-                      <rect x="11.5" y="2.5" width="3" height="3" fill="#fff" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 12.5C5 3.5 11 12.5 13 3.5" stroke="currentColor" strokeWidth="1.35" />
+                      <rect x="1.8" y="11" width="2.8" height="2.8" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+                      <rect x="11.4" y="2" width="2.8" height="2.8" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span>To Curve</span>
                   </button>
@@ -5765,9 +5819,9 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-800'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 13 C4 6, 7 6, 8 8 C9 6, 12 6, 14 13" />
-                      <rect x="6.5" y="6.5" width="3" height="3" fill="#0078d7" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 13C4 6.5 7 6.5 8 8.5C9 6.5 12 6.5 14 13" stroke="currentColor" strokeWidth="1.3" />
+                      <rect x="6.5" y="6.8" width="3" height="3" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span>Cusp</span>
                   </button>
@@ -5780,9 +5834,9 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-800'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 12 C5 6, 11 6, 14 4" />
-                      <circle cx="8" cy="7" r="2" fill="#0078d7" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12C5 6.5 11 6.5 14 4" stroke="currentColor" strokeWidth="1.3" />
+                      <circle cx="8" cy="7.2" r="2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span>Smooth</span>
                   </button>
@@ -5795,9 +5849,9 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                         : 'hover:bg-[#dbe0e6] text-zinc-800'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                      <path d="M2 12 C5 5, 11 5, 14 12" />
-                      <polygon points="8,4 10.5,6.5 8,9 5.5,6.5" fill="#0078d7" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M2 12C5 5.5 11 5.5 14 12" stroke="currentColor" strokeWidth="1.3" />
+                      <polygon points="8,4.2 10.6,6.8 8,9.4 5.4,6.8" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                     </svg>
                     <span>Symmetrical</span>
                   </button>
@@ -6414,7 +6468,7 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
 
                 <span className="ml-auto text-[10.5px] opacity-75 shrink-0">
                   {activeTool === 'freehand'
-                    ? 'Click and drag to draw a freehand stroke'
+                    ? 'Click and drag to draw a freehand stroke; return to start endpoint to snap & close object'
                     : activeTool === 'line2p'
                     ? 'Click start point P1, move & click end point P2 (Esc to cancel)'
                     : activeTool === 'bezier' || activeTool === 'pen'
@@ -7510,95 +7564,160 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
             </div>
 
             {/* Divider */}
-            <div className="h-6 w-px bg-[#c2c5cb]" />
+            <div className="h-6 w-px bg-[#c2c5cb] shrink-0" />
 
-            {/* 8. Corner Styles: Round, Scallop, Chamfer (NuraDraw signature rect controls) */}
-            <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5">
-              <button
-                onClick={() => setCornerStyle('round')}
-                title="Round Corner"
-                className={`p-0.5 rounded-xs ${cornerStyle === 'round' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
-              >
-                <IconCornerRound className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setCornerStyle('scallop')}
-                title="Scalloped Corner"
-                className={`p-0.5 rounded-xs ${cornerStyle === 'scallop' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
-              >
-                <IconCornerScallop className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setCornerStyle('chamfer')}
-                title="Chamfered Corner"
-                className={`p-0.5 rounded-xs ${cornerStyle === 'chamfer' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
-              >
-                <IconCornerChamfer className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* 9. Corner Radii Inputs with center padlock */}
-            <div className="flex items-center gap-1">
-              {/* Left corners (Top-Left & Bottom-Left) */}
-              <div className="flex flex-col gap-0.5">
-                <input
-                  type="text"
-                  value={`${toDisplay(properties.rx)}${unitSuffix}`}
-                  onChange={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    if (!isNaN(parsed)) {
-                      const val = fromDisplay(parsed);
-                      onUpdateProperties({ rx: val, ry: val });
-                    }
-                  }}
-                  className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono outline-none"
-                  title="Top-Left Corner Radius"
-                />
-                <input
-                  type="text"
-                  value={`${toDisplay(properties.ry)}${unitSuffix}`}
-                  onChange={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    if (!isNaN(parsed)) {
-                      const val = fromDisplay(parsed);
-                      onUpdateProperties({ rx: val, ry: val });
-                    }
-                  }}
-                  className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono outline-none"
-                  title="Bottom-Left Corner Radius"
-                />
+            {/* Multi-Selection Shaping & Combine Toolbar (Matches reference Property Bar) */}
+            {selectedObject?.type === 'activeselection' ? (
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={() => onShapeOperation?.('combine')}
+                  title="Combine (Ctrl+L)"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeCombine className="w-4 h-4" />
+                </button>
+                <div className="h-5 w-px bg-[#c2c5cb] mx-1 shrink-0" />
+                <button
+                  onClick={() => onShapeOperation?.('weld')}
+                  title="Weld"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeWeld className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('trim')}
+                  title="Trim"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeTrim className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('intersect')}
+                  title="Intersect"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeIntersect className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('simplify')}
+                  title="Simplify"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeSimplify className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('front_minus_back')}
+                  title="Front Minus Back"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeFrontMinusBack className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('back_minus_front')}
+                  title="Back Minus Front"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeBackMinusFront className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onShapeOperation?.('create_boundary')}
+                  title="Create Boundary"
+                  className="w-6 h-6 flex items-center justify-center rounded-xs border border-transparent hover:bg-[#e5f1fb] hover:border-[#0078d7] text-zinc-800 transition cursor-pointer"
+                >
+                  <IconShapeBoundary className="w-4 h-4" />
+                </button>
               </div>
+            ) : (
+              <>
+                {/* 8. Corner Styles: Round, Scallop, Chamfer (NuraDraw signature rect controls) */}
+                <div className="flex items-center bg-[#f0f1f3] border border-[#abadb3] rounded-xs p-0.5">
+                  <button
+                    onClick={() => setCornerStyle('round')}
+                    title="Round Corner"
+                    className={`p-0.5 rounded-xs ${cornerStyle === 'round' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
+                  >
+                    <IconCornerRound className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCornerStyle('scallop')}
+                    title="Scalloped Corner"
+                    className={`p-0.5 rounded-xs ${cornerStyle === 'scallop' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
+                  >
+                    <IconCornerScallop className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCornerStyle('chamfer')}
+                    title="Chamfered Corner"
+                    className={`p-0.5 rounded-xs ${cornerStyle === 'chamfer' ? 'bg-[#cce8ff] border border-[#99d1ff]' : 'hover:bg-[#dbe0e6]'}`}
+                  >
+                    <IconCornerChamfer className="w-4 h-4" />
+                  </button>
+                </div>
 
-              {/* Center Lock Corners Padlock */}
-              <button
-                onClick={() => setLockCorners(!lockCorners)}
-                title={lockCorners ? 'All Corners Linked' : 'Independent Corners'}
-                className="p-1 hover:bg-[#dbe0e6] rounded-xs text-zinc-700"
-              >
-                {lockCorners ? <Lock className="w-3.5 h-3.5 text-zinc-900" /> : <Unlock className="w-3.5 h-3.5 text-zinc-500" />}
-              </button>
+                {/* 9. Corner Radii Inputs with center padlock */}
+                <div className="flex items-center gap-1">
+                  {/* Left corners (Top-Left & Bottom-Left) */}
+                  <div className="flex flex-col gap-0.5">
+                    <input
+                      type="text"
+                      value={`${toDisplay(properties.rx)}${unitSuffix}`}
+                      onChange={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        if (!isNaN(parsed)) {
+                          const val = fromDisplay(parsed);
+                          onUpdateProperties({ rx: val, ry: val });
+                        }
+                      }}
+                      className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono outline-none"
+                      title="Top-Left Corner Radius"
+                    />
+                    <input
+                      type="text"
+                      value={`${toDisplay(properties.ry)}${unitSuffix}`}
+                      onChange={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        if (!isNaN(parsed)) {
+                          const val = fromDisplay(parsed);
+                          onUpdateProperties({ rx: val, ry: val });
+                        }
+                      }}
+                      className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono outline-none"
+                      title="Bottom-Left Corner Radius"
+                    />
+                  </div>
 
-              {/* Right corners (Top-Right & Bottom-Right) */}
-              <div className="flex flex-col gap-0.5">
-                <input
-                  type="text"
-                  value={`${toDisplay(properties.rx)}${unitSuffix}`}
-                  readOnly
-                  className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono"
-                  title="Top-Right Corner Radius"
-                />
-                <input
-                  type="text"
-                  value={`${toDisplay(properties.ry)}${unitSuffix}`}
-                  readOnly
-                  className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono"
-                  title="Bottom-Right Corner Radius"
-                />
-              </div>
-            </div>
+                  {/* Center Lock Corners Padlock */}
+                  <button
+                    onClick={() => setLockCorners(!lockCorners)}
+                    title={lockCorners ? 'All Corners Linked' : 'Independent Corners'}
+                    className="p-1 hover:bg-[#dbe0e6] rounded-xs text-zinc-700"
+                  >
+                    {lockCorners ? <Lock className="w-3.5 h-3.5 text-zinc-900" /> : <Unlock className="w-3.5 h-3.5 text-zinc-500" />}
+                  </button>
+
+                  {/* Right corners (Top-Right & Bottom-Right) */}
+                  <div className="flex flex-col gap-0.5">
+                    <input
+                      type="text"
+                      value={`${toDisplay(properties.rx)}${unitSuffix}`}
+                      readOnly
+                      className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono"
+                      title="Top-Right Corner Radius"
+                    />
+                    <input
+                      type="text"
+                      value={`${toDisplay(properties.ry)}${unitSuffix}`}
+                      readOnly
+                      className="w-14 h-4 bg-white border border-[#abadb3] px-1 text-right text-[11px] font-mono"
+                      title="Bottom-Right Corner Radius"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Divider */}
-            <div className="h-6 w-px bg-[#c2c5cb]" />
+            <div className="h-6 w-px bg-[#c2c5cb] shrink-0" />
 
             {/* 10. Pen Nib + Outline Width */}
             <div className="flex items-center gap-1">

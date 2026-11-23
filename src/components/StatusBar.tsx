@@ -114,9 +114,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 : 'border-[#cfd1d6] text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
             }`}
           >
-            <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <path d="M3 2v11h11" strokeLinecap="square" />
-              <path d="M3 9h4v4" strokeWidth="1.2" opacity="0.85" />
+            <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter">
+              <path d="M3 2.5V13H13.5" />
+              <path d="M3 8.5H7.5V13" strokeWidth="1.2" opacity="0.85" />
             </svg>
             <span>ORTHO</span>
           </button>

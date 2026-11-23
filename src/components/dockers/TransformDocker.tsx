@@ -417,7 +417,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
         <button
           onClick={() => setActiveTab('position')}
           title="Position (Alt+F7)"
-          className={`flex-1 h-7 flex items-center justify-center rounded-xs transition ${
+          className={`flex-1 h-7 flex items-center justify-center rounded-[2px] transition ${
             activeTab === 'position'
               ? isDark
                 ? 'bg-[#4d5056] text-white shadow-xs border border-[#6a6e77] border-b-transparent'
@@ -427,10 +427,9 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          {/* NuraDraw crosshair with 4 arrowheads icon */}
-          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-            <path d="M8 1v14M1 8h14" />
-            <path d="M5.5 3.5L8 1l2.5 2.5M5.5 12.5L8 15l2.5-2.5M3.5 5.5L1 8l2.5 2.5M12.5 5.5L15 8l-2.5 2.5" />
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2V14M2 8H14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="square" />
+            <path d="M5.8 4L8 1.8L10.2 4M5.8 12L8 14.2L10.2 12M4 5.8L1.8 8L4 10.2M12 5.8L14.2 8L12 10.2" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" strokeLinejoin="miter" />
           </svg>
         </button>
 
@@ -438,7 +437,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
         <button
           onClick={() => setActiveTab('rotate')}
           title="Rotate (Alt+F8)"
-          className={`flex-1 h-7 flex items-center justify-center rounded-xs transition ${
+          className={`flex-1 h-7 flex items-center justify-center rounded-[2px] transition ${
             activeTab === 'rotate'
               ? isDark
                 ? 'bg-[#4d5056] text-white shadow-xs border border-[#6a6e77] border-b-transparent'
@@ -448,14 +447,14 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          <RotateCw className="w-3.5 h-3.5" />
+          <RotateCw className="w-3.5 h-3.5 stroke-[1.6]" />
         </button>
 
         {/* Tab 3: Scale and Mirror */}
         <button
           onClick={() => setActiveTab('scale')}
           title="Scale and Mirror (Alt+F9)"
-          className={`flex-1 h-7 flex items-center justify-center rounded-xs transition ${
+          className={`flex-1 h-7 flex items-center justify-center rounded-[2px] transition ${
             activeTab === 'scale'
               ? isDark
                 ? 'bg-[#4d5056] text-white shadow-xs border border-[#6a6e77] border-b-transparent'
@@ -465,9 +464,10 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 13V3l5 5-5 5zm7 0V3l5 5-5 5z" opacity="0.85" />
-            <path d="M7.5 1v14h1V1h-1z" />
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+            <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.5" />
+            <path d="M6 4L2 8L6 12V4Z" fill="#0078D4" stroke="#005A9E" strokeWidth="0.9" strokeLinejoin="miter" />
+            <path d="M10 4L14 8L10 12V4Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="miter" />
           </svg>
         </button>
 
@@ -475,7 +475,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
         <button
           onClick={() => setActiveTab('size')}
           title="Size (Alt+F10)"
-          className={`flex-1 h-7 flex items-center justify-center rounded-xs transition ${
+          className={`flex-1 h-7 flex items-center justify-center rounded-[2px] transition ${
             activeTab === 'size'
               ? isDark
                 ? 'bg-[#4d5056] text-white shadow-xs border border-[#6a6e77] border-b-transparent'
@@ -485,9 +485,9 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <rect x="2" y="2.5" width="12" height="11" strokeDasharray="2 2" />
-            <path d="M5 8h6M8 5v6" />
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="12" height="12" fill="#FFFFFF" fillOpacity="0.85" stroke="currentColor" strokeWidth="1.15" strokeDasharray="2.2 1.5" />
+            <path d="M5 11L11 5M7.8 5H11V8.2M5 7.8V11H8.2" stroke="#0078D4" strokeWidth="1.3" strokeLinecap="square" />
           </svg>
         </button>
 
@@ -495,7 +495,7 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
         <button
           onClick={() => setActiveTab('skew')}
           title="Skew (Alt+F11)"
-          className={`flex-1 h-7 flex items-center justify-center rounded-xs transition ${
+          className={`flex-1 h-7 flex items-center justify-center rounded-[2px] transition ${
             activeTab === 'skew'
               ? isDark
                 ? 'bg-[#4d5056] text-white shadow-xs border border-[#6a6e77] border-b-transparent'
@@ -505,8 +505,8 @@ export const TransformDocker: React.FC<TransformDockerProps> = ({
               : 'text-zinc-700 hover:bg-[#d5d8de]'
           }`}
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M5 3h8l-2 10H3l2-10z" />
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+            <path d="M5 2.5H13.5L11 13.5H2.5L5 2.5Z" fill="#50E6FF" fillOpacity="0.35" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="miter" />
           </svg>
         </button>
       </div>

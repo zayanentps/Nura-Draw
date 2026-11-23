@@ -7,7 +7,16 @@ import {
   IconSymmetryFinish,
   IconSymmetryRemove,
   IconSymmetryBreak,
+  IconShapeCombine,
+  IconShapeWeld,
+  IconShapeTrim,
+  IconShapeIntersect,
+  IconShapeSimplify,
+  IconShapeFrontMinusBack,
+  IconShapeBackMinusFront,
+  IconShapeBoundary,
 } from './NuraTopPanelIcons';
+import type { ShapeOperation } from '../utils/shapingEngine';
 
 export interface NuraContextMenuProps {
   x: number;
@@ -62,6 +71,7 @@ export interface NuraContextMenuProps {
   onBreakSymmetryLink?: () => void;
   isSymmetryEditing?: boolean;
   onCreateSymbol?: () => void;
+  onShapeOperation?: (op: ShapeOperation) => void;
 }
 
 export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
@@ -111,6 +121,7 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
   onBreakSymmetryLink,
   isSymmetryEditing = false,
   onCreateSymbol,
+  onShapeOperation,
 }) => {
   const isDark = theme === 'dark';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -207,9 +218,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.3">
-                  <path d="M4 7l-3-3 3-3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M1 4h9a4 4 0 0 1 4 4v2" strokeLinecap="round" />
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <path d="M4.5 5H9.5A4 4 0 1 1 5.5 12.5" stroke="#0078D4" strokeWidth="1.5" strokeLinecap="square" />
+                  <path d="M6.5 2.5L3.2 5L6.5 7.5V2.5Z" fill="#0078D4" />
                 </svg>
               </span>
               <span><span className="underline">U</span>ndo</span>
@@ -224,9 +235,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.3">
-                  <path d="M12 7l3-3-3-3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M15 4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" />
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <path d="M11.5 5H6.5A4 4 0 1 0 10.5 12.5" stroke="#0078D4" strokeWidth="1.5" strokeLinecap="square" />
+                  <path d="M9.5 2.5L12.8 5L9.5 7.5V2.5Z" fill="#0078D4" />
                 </svg>
               </span>
               <span><span className="underline">R</span>edo</span>
@@ -241,9 +252,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-                  <rect x="3" y="4" width="10" height="10" rx="1" />
-                  <path d="M6 4V2.5A1.5 1.5 0 0 1 7.5 1h1A1.5 1.5 0 0 1 10 2.5V4" />
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <rect x="2.5" y="2.5" width="10" height="12" rx="0.6" fill="#D29200" fillOpacity="0.88" stroke="#7A5200" strokeWidth="1" />
+                  <rect x="5" y="1.2" width="5" height="2.3" fill="#8A8886" stroke="#323130" strokeWidth="0.9" />
+                  <rect x="4.5" y="4.5" width="8.5" height="9.5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" />
+                  <path d="M6.2 7H11.2M6.2 9.2H11.2" stroke="#0078D4" strokeWidth="1" />
                 </svg>
               </span>
               <span><span className="underline">P</span>aste</span>
@@ -259,7 +272,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                📄
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <path d="M3 1.5H9.5L13 5V14.5H3V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+                  <path d="M9.5 1.5V5H13" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+                  <path d="M5 8H10.5M5 10.5H9" stroke="#0078D4" strokeWidth="1" />
+                </svg>
               </span>
               <span><span className="underline">P</span>age Setup...</span>
             </div>
@@ -273,7 +290,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
                 className="w-full flex items-center justify-between px-2 py-1 text-left bg-sky-500/15 hover:bg-[#0078d7] hover:text-white text-sky-600 dark:text-sky-300 font-semibold group cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className="w-4 h-4 flex items-center justify-center shrink-0">✓</span>
+                  <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
+                    </svg>
+                  </span>
                   <span>Finish Editing Group</span>
                 </div>
                 <span className="font-mono text-[10px] opacity-75 pl-3">Esc</span>
@@ -288,8 +309,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-                  <path d="M13.5 3.5l-7 7L3 7l1-1 2.5 2.5 6-6 1 1z" />
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <line x1="2" y1="4.8" x2="14" y2="4.8" stroke="currentColor" strokeWidth="1.25" />
+                  <rect x="4.5" y="3.2" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+                  <line x1="2" y1="11.2" x2="14" y2="11.2" stroke="currentColor" strokeWidth="1.25" />
+                  <rect x="8.5" y="9.6" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
                 </svg>
               </span>
               <span>P<span className="underline">r</span>operties</span>
@@ -309,9 +333,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
             {/* Convert to curves icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-              <path d="M2 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 1a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm12-7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 1a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
-              <path d="M3.5 10.5 C 5 5, 11 11, 12.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M2.5 12.5C5 5.5 11 10.5 13.5 3.5" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="1.5" y="11" width="3" height="3" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+              <rect x="11.5" y="2" width="3" height="3" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
             </svg>
           </span>
           <span>Con<span className="underline">v</span>ert to Curves</span>
@@ -327,10 +352,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Bring into focus icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
-              <circle cx="8" cy="8" r="2.5" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M2 5V2H5M11 2H14V5M14 11V14H11M5 14H2V11" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
+              <rect x="5.5" y="5.5" width="5" height="5" fill="#50E6FF" fillOpacity="0.4" stroke="#0078D4" strokeWidth="1.2" />
             </svg>
           </span>
           <span>Bring into <span className="underline">F</span>ocus</span>
@@ -339,17 +363,23 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
 
       {/* 3. Break Apart */}
       <button
-        disabled={!hasSelection || selectedObject?.type !== 'group'}
+        disabled={
+          !hasSelection ||
+          (selectedObject?.type !== 'group' &&
+            !(
+              selectedObject?.type === 'path' &&
+              Array.isArray((selectedObject as any).path) &&
+              (selectedObject as any).path.filter((c: any[]) => String(c?.[0]).toUpperCase() === 'M').length > 1
+            ))
+        }
         onClick={() => handleAction(onBreakApart)}
         className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-inherit group cursor-pointer transition-colors"
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Break apart icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <rect x="2" y="2" width="5" height="5" />
-              <rect x="9" y="9" width="5" height="5" />
-              <line x1="7" y1="7" x2="9" y2="9" strokeDasharray="1 1" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <rect x="2" y="2" width="5.2" height="5.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+              <rect x="8.8" y="8.8" width="5.2" height="5.2" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.15" />
             </svg>
           </span>
           <span>Bre<span className="underline">a</span>k Apart</span>
@@ -357,27 +387,63 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
         <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Ctrl+K</span>
       </button>
 
-      {/* Group / Ungroup / Group Editing */}
+      {/* Group / Ungroup / Combine / Shaping / Group Editing */}
       {(isMultiSelect || isGroup || isGroupEditing) && (
         <>
           <div className={`h-px my-1 ${isDark ? 'bg-zinc-700' : 'bg-zinc-200'}`} />
           {isMultiSelect && (
-            <button
-              onClick={() => handleAction(onGroup)}
-              className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors font-medium"
-            >
-              <div className="flex items-center gap-2.5">
-                <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.3">
-                    <rect x="2" y="2" width="6" height="6" />
-                    <rect x="8" y="8" width="6" height="6" />
-                    <rect x="1" y="1" width="14" height="14" strokeDasharray="2 1.5" opacity="0.6" />
-                  </svg>
-                </span>
-                <span><span className="underline">G</span>roup Objects</span>
+            <>
+              <button
+                onClick={() => handleAction(onGroup)}
+                className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors font-medium"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                      <rect x="3" y="3" width="5" height="5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+                      <rect x="8" y="8" width="5" height="5" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.1" />
+                      <rect x="1.5" y="1.5" width="13" height="13" stroke="#0078D4" strokeWidth="1" strokeDasharray="2 1.4" />
+                    </svg>
+                  </span>
+                  <span><span className="underline">G</span>roup Objects</span>
+                </div>
+                <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Ctrl+G</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => onShapeOperation?.('combine'))}
+                className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                    <IconShapeCombine className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Com<span className="underline">b</span>ine</span>
+                </div>
+                <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Ctrl+L</span>
+              </button>
+              <div className="flex items-center gap-0.5 px-2 py-1">
+                {(
+                  [
+                    { op: 'weld' as ShapeOperation, label: 'Weld', Icon: IconShapeWeld },
+                    { op: 'trim' as ShapeOperation, label: 'Trim', Icon: IconShapeTrim },
+                    { op: 'intersect' as ShapeOperation, label: 'Intersect', Icon: IconShapeIntersect },
+                    { op: 'simplify' as ShapeOperation, label: 'Simplify', Icon: IconShapeSimplify },
+                    { op: 'front_minus_back' as ShapeOperation, label: 'Front Minus Back', Icon: IconShapeFrontMinusBack },
+                    { op: 'back_minus_front' as ShapeOperation, label: 'Back Minus Front', Icon: IconShapeBackMinusFront },
+                    { op: 'create_boundary' as ShapeOperation, label: 'Create Boundary', Icon: IconShapeBoundary },
+                  ] as const
+                ).map(({ op, label, Icon }) => (
+                  <button
+                    key={op}
+                    onClick={() => handleAction(() => onShapeOperation?.(op))}
+                    title={label}
+                    className="w-6 h-6 flex items-center justify-center rounded-xs hover:bg-[#0078d7] hover:text-white transition cursor-pointer"
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </button>
+                ))}
               </div>
-              <span className="font-mono text-[10px] text-zinc-500 group-hover:text-white pl-3">Ctrl+G</span>
-            </button>
+            </>
           )}
           {isGroup && !isPC && !isTextOnPath && (
             <button
@@ -385,7 +451,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors font-medium text-sky-600 dark:text-sky-300"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-4 h-4 flex items-center justify-center shrink-0">✎</span>
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                    <path d="M11 2.2L13.8 5L5.2 13.6L2 14L2.4 10.8L11 2.2Z" fill="#FFC83D" stroke="currentColor" strokeWidth="1.1" />
+                  </svg>
+                </span>
                 <span><span className="underline">E</span>dit Group</span>
               </div>
               <span className="font-mono text-[10px] opacity-70 pl-3">Dbl-Click</span>
@@ -399,9 +469,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
               >
                 <div className="flex items-center gap-2.5">
                   <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.3">
-                      <rect x="2" y="2" width="5" height="5" />
-                      <rect x="9" y="9" width="5" height="5" />
+                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                      <rect x="2" y="2" width="5.2" height="5.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+                      <rect x="8.8" y="8.8" width="5.2" height="5.2" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.15" />
                     </svg>
                   </span>
                   <span><span className="underline">U</span>ngroup Objects</span>
@@ -425,7 +495,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2 py-1 text-left bg-sky-500/15 hover:bg-[#0078d7] hover:text-white text-sky-600 dark:text-sky-300 font-semibold group cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-4 h-4 flex items-center justify-center shrink-0">✓</span>
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
+                  </svg>
+                </span>
                 <span>Finish Editing Group</span>
               </div>
               <span className="font-mono text-[10px] opacity-75 pl-3">Esc</span>
@@ -445,9 +519,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Cut icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-              <path d="M3.5 3.5a2 2 0 1 0 2.8 2.8L8 4.7l1.7 1.6a2 2 0 1 0 2.8-2.8 2 2 0 0 0-2.8 0L8 5.2 6.3 3.5a2 2 0 0 0-2.8 0zm.7.7a1 1 0 1 1 1.4 1.4L4.2 4.2zm7.6 0a1 1 0 1 1 1.4 1.4l-1.4-1.4zM6 8l-4 7h2l3-5.2L6 8zm4 0l1 1.8 3 5.2h2L10 8z" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <circle cx="4" cy="4.2" r="2" fill="#0078D4" fillOpacity="0.2" stroke="#0078D4" strokeWidth="1.25" />
+              <circle cx="4" cy="11.8" r="2" fill="#0078D4" fillOpacity="0.2" stroke="#0078D4" strokeWidth="1.25" />
+              <path d="M5.6 5.4L14 12.2M5.6 10.6L14 3.8" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
             </svg>
           </span>
           <span><span className="underline">C</span>ut</span>
@@ -463,10 +538,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Copy icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <rect x="5" y="5" width="8" height="9" rx="0.5" />
-              <path d="M3 11H2V2h8v1" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <rect x="2.5" y="4" width="8" height="10" fill="#E1DFDD" stroke="currentColor" strokeWidth="1.1" />
+              <rect x="5.5" y="1.5" width="8" height="10" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+              <path d="M7.2 4.5H11.8M7.2 6.8H11.8" stroke="#0078D4" strokeWidth="1" />
             </svg>
           </span>
           <span><span className="underline">C</span>opy</span>
@@ -482,9 +557,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Delete icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-              <path d="M5 2V1h6v1h4v1H1V2h4zm1 3v8h1V5H6zm3 0v8h1V5H9zm-5 8V4h8v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M2.5 4H13.5M6 4V2H10V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square" />
+              <path d="M4 4L4.8 14H11.2L12 4H4Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+              <path d="M6.5 6.5V11.5M9.5 6.5V11.5" stroke="#E81123" strokeWidth="1.15" />
             </svg>
           </span>
           <span><span className="underline">D</span>elete</span>
@@ -507,9 +583,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
         >
           <div className="flex items-center gap-2.5">
             <span className="w-4 h-4 flex items-center justify-center shrink-0">
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-                <rect x="2" y="5" width="8" height="8" />
-                <rect x="6" y="2" width="8" height="8" />
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                <rect x="2.2" y="5.5" width="7.8" height="7.8" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+                <rect x="6" y="2.2" width="7.8" height="7.8" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.1" />
               </svg>
             </span>
             <span><span className="underline">O</span>rder</span>
@@ -566,10 +642,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Eye slash icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <path d="M2 8s2.5-4.5 6-4.5S14 8 14 8s-2.5 4.5-6 4.5S2 8 2 8z" />
-              <line x1="2" y1="2" x2="14" y2="14" strokeWidth="1.2" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M1.8 8S4.2 3.8 8 3.8S14.2 8 14.2 8S11.8 12.2 8 12.2S1.8 8 1.8 8Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+              <line x1="2.2" y1="2.2" x2="13.8" y2="13.8" stroke="#E81123" strokeWidth="1.4" strokeLinecap="square" />
             </svg>
           </span>
           <span>{isHidden ? 'Show' : <><span className="underline">H</span>ide</>}</span>
@@ -584,9 +659,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Lock icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-              <path d="M4 6V4a4 4 0 0 1 8 0v2h1v8H3V6h1zm2 0h4V4a2 2 0 1 0-4 0v2z" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <rect x="3" y="7" width="10" height="7" fill="#FFC83D" stroke="#9C6500" strokeWidth="1" />
+              <path d="M5.5 7V5A2.5 2.5 0 0 1 10.5 5V7" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="7.3" y="9.2" width="1.4" height="2.4" fill="#605E5C" />
             </svg>
           </span>
           <span>{isLocked ? 'Unlock' : <><span className="underline">L</span>ock</>}</span>
@@ -606,10 +682,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                {/* PowerClip icon */}
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-                  <rect x="2" y="3" width="12" height="10" rx="1" />
-                  <circle cx="8" cy="8" r="2.5" />
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                  <rect x="2" y="2" width="12" height="12" fill="#E6F2FA" fillOpacity="0.45" stroke="#0078D4" strokeWidth="1.15" strokeDasharray="2.4 1.4" />
+                  <circle cx="8" cy="8" r="2.6" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" />
                 </svg>
               </span>
               <span><span className="underline">P</span>owerClip Inside...</span>
@@ -622,7 +697,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-4 h-4 flex items-center justify-center shrink-0 text-amber-500">✏️</span>
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                    <path d="M11 2.2L13.8 5L5.2 13.6L2 14L2.4 10.8L11 2.2Z" fill="#FFC83D" stroke="#9C6500" strokeWidth="1.05" />
+                  </svg>
+                </span>
                 <span><span className="underline">E</span>dit PowerClip</span>
               </div>
             </button>
@@ -631,7 +710,12 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2 py-1 text-left hover:bg-[#0078d7] hover:text-white group cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-4 h-4 flex items-center justify-center shrink-0 text-blue-500">📤</span>
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                    <path d="M2 10.5V14H14V10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="square" />
+                    <path d="M8 10.5V2.2M5 5.2L8 2.2L11 5.2" stroke="#0078D4" strokeWidth="1.4" strokeLinecap="square" />
+                  </svg>
+                </span>
                 <span><span className="underline">E</span>xtract Contents</span>
               </div>
             </button>
@@ -643,7 +727,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
           className="w-full flex items-center justify-between px-2 py-1 text-left bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 font-semibold group cursor-pointer transition-colors"
         >
           <div className="flex items-center gap-2.5">
-            <span className="w-4 h-4 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-300">✔️</span>
+            <span className="w-4 h-4 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-300 group-hover:text-white">
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
+              </svg>
+            </span>
             <span><span className="underline">F</span>inish Editing PowerClip</span>
           </div>
         </button>
@@ -786,11 +874,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Symbol icon with green plus */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <path d="M3 2h7l3 3v9H3V2z" />
-              <path d="M10 2v3h3" />
-              <path d="M13 11v4M11 13h4" stroke="#10b981" strokeWidth="1.5" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M3 1.5H9.5L12.5 4.5V14H3V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+              <rect x="9.5" y="9.5" width="5.2" height="5.2" rx="0.6" fill="#107C10" />
+              <path d="M12.1 10.6V13.6M10.6 12.1H13.6" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="square" />
             </svg>
           </span>
           <span>Create <span className="underline">N</span>ew Symbol</span>
@@ -889,13 +976,12 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Wrap paragraph text icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <circle cx="8" cy="8" r="3.5" stroke="#0284c7" />
-              <line x1="2" y1="4" x2="5" y2="4" />
-              <line x1="11" y1="4" x2="14" y2="4" />
-              <line x1="2" y1="12" x2="5" y2="12" />
-              <line x1="11" y1="12" x2="14" y2="12" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <circle cx="8" cy="8" r="3" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.1" />
+              <line x1="2" y1="4.5" x2="5" y2="4.5" stroke="currentColor" strokeWidth="1.25" />
+              <line x1="11" y1="4.5" x2="14" y2="4.5" stroke="currentColor" strokeWidth="1.25" />
+              <line x1="2" y1="11.5" x2="5" y2="11.5" stroke="currentColor" strokeWidth="1.25" />
+              <line x1="11" y1="11.5" x2="14" y2="11.5" stroke="currentColor" strokeWidth="1.25" />
             </svg>
           </span>
           <span><span className="underline">W</span>rap Paragraph Text</span>
@@ -916,10 +1002,9 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Wrap connector line icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <path d="M2 8h3v-3h6v3h3" stroke="#ea580c" />
-              <rect x="6" y="6" width="4" height="4" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M1.8 8H5V4.8H11V8H14.2" stroke="#0078D4" strokeWidth="1.35" strokeLinejoin="miter" />
+              <rect x="6" y="6" width="4" height="4" fill="#FFC83D" stroke="#9C6500" strokeWidth="0.9" />
             </svg>
           </span>
           <span>Wrap <span className="underline">C</span>onnector Line</span>
@@ -984,11 +1069,10 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Horseshoe magnet over pixel grid icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="1.2">
-              <path d="M4 2v4a4 4 0 0 0 8 0V2" stroke="#dc2626" strokeWidth="1.5" />
-              <line x1="2" y1="13" x2="14" y2="13" strokeDasharray="1.5 1.5" />
-              <line x1="2" y1="15" x2="14" y2="15" strokeDasharray="1.5 1.5" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <path d="M4.5 2.5V6.5A3.5 3.5 0 0 0 11.5 6.5V2.5" stroke="#E81123" strokeWidth="1.6" strokeLinecap="butt" />
+              <line x1="2" y1="12.2" x2="14" y2="12.2" stroke="currentColor" strokeWidth="1.15" strokeDasharray="1.8 1.5" />
+              <line x1="2" y1="14.2" x2="14" y2="14.2" stroke="currentColor" strokeWidth="1.15" strokeDasharray="1.8 1.5" />
             </svg>
           </span>
           <span>Align with Pixel <span className="underline">G</span>rid</span>
@@ -1005,9 +1089,11 @@ export const NuraContextMenu: React.FC<NuraContextMenuProps> = ({
       >
         <div className="flex items-center gap-2.5">
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {/* Properties checkmark icon */}
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
-              <path d="M13.5 3.5l-7 7L3 7l1-1 2.5 2.5 6-6 1 1z" />
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+              <line x1="2" y1="4.8" x2="14" y2="4.8" stroke="currentColor" strokeWidth="1.25" />
+              <rect x="4.5" y="3.2" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+              <line x1="2" y1="11.2" x2="14" y2="11.2" stroke="currentColor" strokeWidth="1.25" />
+              <rect x="8.5" y="9.6" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
             </svg>
           </span>
           <span><span className="underline">P</span>roperties</span>

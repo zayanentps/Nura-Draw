@@ -109,10 +109,15 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
       id: 'hints',
       label: 'Hints',
       icon: (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <path d="M8 2a4 4 0 0 0-4 4c0 1.5.8 2.5 1.5 3.5.3.4.5.9.5 1.5h4c0-.6.2-1.1.5-1.5.7-1 1.5-2 1.5-3.5a4 4 0 0 0-4-4z" />
-          <line x1="6" y1="13" x2="10" y2="13" />
-          <line x1="7" y1="15" x2="9" y2="15" />
+        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M8 1.8A4 4 0 0 0 4 5.8C4 7.3 4.8 8.3 5.5 9.2C5.8 9.6 6 10 6 10.6H10C10 10 10.2 9.6 10.5 9.2C11.2 8.3 12 7.3 12 5.8A4 4 0 0 0 8 1.8Z"
+            fill="#FFC83D"
+            stroke="#9C6500"
+            strokeWidth="1.05"
+          />
+          <rect x="6" y="10.8" width="4" height="2" fill="#D2D0CE" stroke="currentColor" strokeWidth="0.9" />
+          <line x1="6.8" y1="14.2" x2="9.2" y2="14.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square" />
         </svg>
       ),
     },
@@ -120,9 +125,11 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
       id: 'properties',
       label: 'Properties',
       icon: (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <polygon points="8,1 15,8 8,15 1,8" />
-          <path d="M4 8h8M6 5h4M6 11h4" />
+        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+          <line x1="2" y1="4.8" x2="14" y2="4.8" stroke="currentColor" strokeWidth="1.25" />
+          <rect x="4.5" y="3.2" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
+          <line x1="2" y1="11.2" x2="14" y2="11.2" stroke="currentColor" strokeWidth="1.25" />
+          <rect x="8.5" y="9.6" width="3.2" height="3.2" fill="#0078D4" stroke="#FFFFFF" strokeWidth="0.6" />
         </svg>
       ),
     },
@@ -130,10 +137,10 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
       id: 'objects',
       label: 'Objects',
       icon: (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <polygon points="8,2 14,5.5 8,9 2,5.5" />
-          <polyline points="2,8.5 8,12 14,8.5" />
-          <polyline points="2,11.5 8,15 14,11.5" />
+        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+          <polygon points="8,1.8 14,5 8,8.2 2,5" fill="#50E6FF" stroke="#0078D4" strokeWidth="1.05" strokeLinejoin="miter" />
+          <polyline points="2,8.2 8,11.4 14,8.2" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="miter" />
+          <polyline points="2,11.2 8,14.4 14,11.2" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="miter" />
         </svg>
       ),
     },
@@ -141,8 +148,9 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
       id: 'ai_generate',
       label: 'AI Generate',
       icon: (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z" />
+        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+          <path d="M8 1.5L9.5 6L14 7.5L9.5 9L8 13.5L6.5 9L2 7.5L6.5 6L8 1.5Z" fill="#8661C5" stroke="#5C2D91" strokeWidth="1" strokeLinejoin="miter" />
+          <rect x="11.8" y="2" width="2" height="2" fill="#50E6FF" />
         </svg>
       ),
     },
@@ -156,10 +164,11 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
             id: activeDockerId,
             label: DOCKER_LABELS[activeDockerId] || activeDockerId,
             icon: (
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-                <line x1="5" y1="6" x2="11" y2="6" />
-                <line x1="5" y1="10" x2="9" y2="10" />
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="2" width="12" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+                <rect x="2" y="2" width="12" height="2.8" fill="#0078D4" />
+                <line x1="4.5" y1="7.5" x2="11.5" y2="7.5" stroke="currentColor" strokeWidth="1.15" />
+                <line x1="4.5" y1="10.5" x2="9.5" y2="10.5" stroke="currentColor" strokeWidth="1.15" />
               </svg>
             ),
           },

@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   IconPick,
+  IconFreehandPick,
   IconShape,
+  IconSmooth,
   IconCrop,
   IconKnife,
   IconVirtualSegmentDelete,
   IconEraser,
   IconZoom,
+  IconPanHand,
   IconFreehand,
   IconLine2P,
   IconBezier,
@@ -17,8 +20,12 @@ import {
   IconArtisticMedia,
   IconRectangle,
   IconEllipse,
+  IconEllipse3P,
   IconPolygon,
+  IconStar,
+  IconSpiral,
   IconText,
+  IconParagraphText,
   IconTable,
   IconDimension,
   IconHVDimension,
@@ -36,6 +43,7 @@ import {
   IconTransparency,
   IconEyedropper,
   IconInteractiveFill,
+  IconSmartFill,
   IconGear,
 } from './NuraToolIcons';
 import { ToolType, ThemeMode } from '../types';
@@ -108,7 +116,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: false,
       subTools: [
         { id: 'pick', label: 'Pick Tool', shortcut: 'V', icon: <IconPick className="w-4 h-4" /> },
-        { id: 'freehand_pick', label: 'Freehand Pick', icon: <IconPick className="w-4 h-4 text-emerald-600" /> },
+        { id: 'freehand_pick', label: 'Freehand Pick', icon: <IconFreehandPick className="w-4 h-4" /> },
       ],
     },
     {
@@ -118,7 +126,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: true,
       subTools: [
         { id: 'shape', label: 'Shape Tool', shortcut: 'F10', icon: <IconShape className="w-4 h-4" /> },
-        { id: 'smooth', label: 'Smooth Tool', icon: <IconShape className="w-4 h-4 text-emerald-600" /> },
+        { id: 'smooth', label: 'Smooth Tool', icon: <IconSmooth className="w-4 h-4" /> },
       ],
     },
     {
@@ -140,7 +148,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: true,
       subTools: [
         { id: 'zoom', label: 'Zoom Tool', shortcut: 'F2', icon: <IconZoom className="w-4 h-4" /> },
-        { id: 'pan', label: 'Pan Hand Tool', shortcut: 'H', icon: <IconZoom className="w-4 h-4 text-blue-600" /> },
+        { id: 'pan', label: 'Pan Hand Tool', shortcut: 'H', icon: <IconPanHand className="w-4 h-4" /> },
       ],
     },
     {
@@ -174,7 +182,6 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: false,
       subTools: [
         { id: 'rectangle', label: 'Rectangle Tool', shortcut: 'F6', icon: <IconRectangle className="w-4 h-4" /> },
-        { id: 'rect3p', label: '3-Point Rectangle', icon: <IconRectangle className="w-4 h-4 text-emerald-600" /> },
       ],
     },
     {
@@ -184,7 +191,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: false,
       subTools: [
         { id: 'ellipse', label: 'Ellipse Tool', shortcut: 'F7', icon: <IconEllipse className="w-4 h-4" /> },
-        { id: 'ellipse3p', label: '3-Point Ellipse', icon: <IconEllipse className="w-4 h-4 text-emerald-600" /> },
+        { id: 'ellipse3p', label: '3-Point Ellipse', icon: <IconEllipse3P className="w-4 h-4" /> },
       ],
     },
     {
@@ -194,8 +201,8 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: true,
       subTools: [
         { id: 'polygon', label: 'Polygon Tool', shortcut: 'Y', icon: <IconPolygon className="w-4 h-4" /> },
-        { id: 'star', label: 'Star Tool', icon: <IconPolygon className="w-4 h-4 text-amber-500" /> },
-        { id: 'spiral', label: 'Spiral Tool', shortcut: 'A', icon: <IconPolygon className="w-4 h-4 text-purple-600" /> },
+        { id: 'star', label: 'Star Tool', icon: <IconStar className="w-4 h-4" /> },
+        { id: 'spiral', label: 'Spiral Tool', shortcut: 'A', icon: <IconSpiral className="w-4 h-4" /> },
       ],
     },
     {
@@ -205,8 +212,8 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: true,
       subTools: [
         { id: 'text', key: 'artistic_text', label: 'Text Tool', shortcut: 'F8', icon: <IconText className="w-4 h-4" /> },
-        { id: 'text', key: 'paragraph_text', label: 'Paragraph / Artistic Text', shortcut: 'F8', icon: <IconText className="w-4 h-4 text-emerald-600" /> },
-        { id: 'text', key: 'table_tool', label: 'Table Tool', icon: <IconTable className="w-4 h-4 text-blue-600" /> },
+        { id: 'text', key: 'paragraph_text', label: 'Paragraph / Artistic Text', shortcut: 'F8', icon: <IconParagraphText className="w-4 h-4" /> },
+        { id: 'text', key: 'table_tool', label: 'Table Tool', icon: <IconTable className="w-4 h-4" /> },
       ],
     },
     {
@@ -271,7 +278,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       hasDividerAfter: true,
       subTools: [
         { id: 'gradient', label: 'Interactive Fill', shortcut: 'G', icon: <IconInteractiveFill className="w-4 h-4" /> },
-        { id: 'smart_fill', label: 'Smart Fill Tool', icon: <IconInteractiveFill className="w-4 h-4 text-amber-500" /> },
+        { id: 'smart_fill', label: 'Smart Fill Tool', icon: <IconSmartFill className="w-4 h-4" /> },
       ],
     },
   ];
@@ -332,6 +339,12 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       }
       onSelectTool(group.activeId);
       openFlyoutForGroup(group.id, group.subTools.length);
+      return;
+    }
+
+    if (group.id === 'pickGroup') {
+      onSelectTool(group.activeId);
+      setOpenFlyoutGroupId(null);
       return;
     }
 
@@ -398,17 +411,23 @@ export const Toolbox: React.FC<ToolboxProps> = ({
                   onClick={() => handleToolClick(group)}
                   onContextMenu={(e) => {
                     e.preventDefault();
-                    openFlyoutForGroup(group.id, group.subTools.length);
+                    if (group.subTools.length > 1) {
+                      openFlyoutForGroup(group.id, group.subTools.length);
+                    }
                   }}
-                  title={`${currentSubTool.label} ${currentSubTool.shortcut ? `(${currentSubTool.shortcut})` : ''}\n(Click bottom-right arrow for more tools)`}
-                  className={`w-7 h-7 rounded-xs flex items-center justify-center relative transition-all ${
+                  title={
+                    group.subTools.length > 1
+                      ? `${currentSubTool.label} ${currentSubTool.shortcut ? `(${currentSubTool.shortcut})` : ''}\n(Click bottom-right arrow for more tools)`
+                      : `${currentSubTool.label} ${currentSubTool.shortcut ? `(${currentSubTool.shortcut})` : ''}`
+                  }
+                  className={`w-7 h-7 rounded-[2px] flex items-center justify-center relative transition-colors ${
                     isGroupActive || activeFlyout
                       ? isDark
-                        ? 'bg-[#3d4045] text-white border border-[#727780] shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)] ring-1 ring-sky-400'
-                        : 'bg-[#ffffff] text-zinc-900 border border-[#9ca3af] shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] ring-1 ring-zinc-400'
+                        ? 'bg-[#0078d4]/30 text-[#50e6ff] border border-[#50e6ff]/70 shadow-none'
+                        : 'bg-[#cce8ff] text-[#005a9e] border border-[#0078d7] shadow-none'
                       : isDark
-                      ? 'text-zinc-200 hover:bg-[#5c6068] hover:border hover:border-[#6e737d]'
-                      : 'text-zinc-700 hover:bg-[#e4e4e7] hover:border hover:border-zinc-300'
+                      ? 'text-zinc-200 hover:bg-[#5c6068] border border-transparent hover:border-[#767a84]'
+                      : 'text-zinc-800 hover:bg-[#e5f1fb] border border-transparent hover:border-[#99d1ff]'
                   }`}
                 >
                   {/* Tool Icon */}
@@ -416,22 +435,22 @@ export const Toolbox: React.FC<ToolboxProps> = ({
                     {currentSubTool.icon}
                   </div>
 
-                  {/* Signature NuraDraw Bottom-Right Flyout Triangle */}
+                  {/* Windows 10 Crisp Corner Flyout Indicator */}
                   {group.subTools.length > 1 && (
                     <span
                       onClick={(e) => handleFlyoutArrowClick(e, group)}
-                      className="absolute bottom-0 right-0 w-3 h-3 flex items-end justify-end cursor-pointer z-10"
+                      className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 flex items-end justify-end cursor-pointer z-10 opacity-80 hover:opacity-100"
                       title="Open Sub-Commands Dropdown"
                     >
-                      <span className={`w-0 h-0 border-b-[4px] border-r-[4px] border-t-[3px] border-l-[3px] border-t-transparent border-l-transparent ${
-                        isDark ? 'border-b-zinc-200 border-r-zinc-200' : 'border-b-zinc-800 border-r-zinc-800'
-                      }`} />
+                      <svg viewBox="0 0 6 6" className="w-1.5 h-1.5 fill-current">
+                        <polygon points="6,1 6,6 1,6" />
+                      </svg>
                     </span>
                   )}
                 </button>
               </div>
 
-              {/* Horizontal Group Divider (Matches NuraDraw toolbar dividers in screenshot) */}
+              {/* Horizontal Group Divider */}
               {group.hasDividerAfter && (
                 <div className={`w-5 h-px my-0.5 ${isDark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
               )}
@@ -445,13 +464,13 @@ export const Toolbox: React.FC<ToolboxProps> = ({
             <button
               onClick={onOpenQrCode}
               title="QR Code Generator (Insert Vector QR Code)"
-              className={`w-7 h-7 rounded-xs flex items-center justify-center relative transition-all ${
+              className={`w-7 h-7 rounded-[2px] flex items-center justify-center relative transition-colors ${
                 isDark
-                  ? 'text-sky-400 hover:bg-zinc-700 hover:border hover:border-zinc-600'
-                  : 'text-[#0078d7] hover:bg-[#e5f1fb] hover:border hover:border-[#99d1ff]'
+                  ? 'text-[#50e6ff] hover:bg-[#5c6068] border border-transparent hover:border-[#767a84]'
+                  : 'text-[#0078d4] hover:bg-[#e5f1fb] border border-transparent hover:border-[#99d1ff]'
               }`}
             >
-              <QrCode className="w-4 h-4" />
+              <QrCode className="w-4 h-4 stroke-[1.6]" />
             </button>
           </>
         )}
@@ -460,40 +479,41 @@ export const Toolbox: React.FC<ToolboxProps> = ({
         <div className={`w-5 h-px my-0.5 ${isDark ? 'bg-[#646870]' : 'bg-zinc-300'}`} />
         <button
           title="Quick Customize / Add Tools"
-          className={`w-7 h-6 flex items-center justify-center rounded-xs text-xs ${
-            isDark ? 'text-zinc-300 hover:text-white hover:bg-[#5c6068]' : 'text-zinc-500 hover:text-zinc-900 hover:bg-[#e4e4e7]'
+          className={`w-7 h-6 flex items-center justify-center rounded-[2px] text-xs ${
+            isDark ? 'text-zinc-300 hover:text-white hover:bg-[#5c6068]' : 'text-zinc-600 hover:text-zinc-900 hover:bg-[#e5f1fb]'
           }`}
         >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+          <Plus className="w-3.5 h-3.5 stroke-[1.8]" />
         </button>
         <button
           title="Toolbar Options"
-          className={`w-7 h-5 flex items-center justify-center rounded-xs ${
-            isDark ? 'text-zinc-300 hover:text-white hover:bg-[#5c6068]' : 'text-zinc-400 hover:text-zinc-900 hover:bg-[#e4e4e7]'
+          className={`w-7 h-5 flex items-center justify-center rounded-[2px] ${
+            isDark ? 'text-zinc-300 hover:text-white hover:bg-[#5c6068]' : 'text-zinc-500 hover:text-zinc-900 hover:bg-[#e5f1fb]'
           }`}
         >
-          <ChevronsRight className="w-3 h-3 text-sky-400" />
+          <ChevronsRight className="w-3 h-3 text-[#0078d4]" />
         </button>
 
         {/* Divider before Settings */}
         <div className={`w-5 h-px my-1 ${isDark ? 'bg-[#646870]' : 'bg-zinc-300'}`} />
 
-        {/* NuraDraw Options / Tools Cogwheel (Matches bottom of image_8930b229.png) */}
+        {/* NuraDraw Options / Tools Cogwheel */}
         <div className="relative w-full flex justify-center">
           <button
             onClick={() => onOpenSettings?.()}
             title="Options / Settings (Ctrl+J)"
-            className={`w-7 h-7 rounded-xs flex items-center justify-center relative transition-all ${
+            className={`w-7 h-7 rounded-[2px] flex items-center justify-center relative transition-colors ${
               isDark
-                ? 'text-zinc-200 hover:bg-[#5c6068] hover:border hover:border-[#6e737d]'
-                : 'text-zinc-700 hover:bg-[#e4e4e7] hover:border hover:border-zinc-300'
+                ? 'text-zinc-200 hover:bg-[#5c6068] border border-transparent hover:border-[#767a84]'
+                : 'text-zinc-800 hover:bg-[#e5f1fb] border border-transparent hover:border-[#99d1ff]'
             }`}
           >
-            <IconGear className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-            {/* Signature NuraDraw Flyout Triangle */}
-            <span
-              className="absolute bottom-0 right-0 w-0 h-0 border-b-[4px] border-r-[4px] border-b-zinc-800 border-r-zinc-800 border-t-[4px] border-l-[4px] border-t-transparent border-l-transparent pointer-events-none"
-            />
+            <IconGear className="w-4 h-4" />
+            <span className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 opacity-70 pointer-events-none">
+              <svg viewBox="0 0 6 6" className="w-1.5 h-1.5 fill-current">
+                <polygon points="6,1 6,6 1,6" />
+              </svg>
+            </span>
           </button>
         </div>
       </div>

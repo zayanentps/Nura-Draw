@@ -1,880 +1,1029 @@
 import React from 'react';
 
-// New Document with green plus
+// =============================================================================
+// NuraDraw Windows 10 OS Fluent / Shell Icon Set (16x16 Top Panel & Menu Grid)
+// Crisp miter/0.5px corners, Windows 10 flat color planes (#0078D4, #50E6FF,
+// #FFC83D Explorer Gold, #107C10 Green, #E81123 Red, #FFFFFF Paper) +
+// adaptive currentColor structural strokes for seamless Light & Dark themes.
+// =============================================================================
+
+// New Document (Windows 10 crisp white page + folded corner + green plus badge)
 export const IconDocNew: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 1.5 L10 1.5 L13 4.5 L13 14.5 L3 14.5 Z" fill="#ffffff" stroke="#374151" strokeWidth="1.2" strokeLinejoin="round" />
-    <path d="M10 1.5 L10 4.5 L13 4.5" fill="#e5e7eb" stroke="#374151" strokeWidth="1" />
-    <circle cx="4" cy="4" r="2.5" fill="#22c55e" stroke="#16a34a" strokeWidth="0.8" />
-    <path d="M4 2.5 L4 5.5 M2.5 4 L5.5 4" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" />
+    <path
+      d="M3 1.5H9.5L13 5V14.5H3V1.5Z"
+      fill="#FFFFFF"
+      fillOpacity="0.92"
+      stroke="currentColor"
+      strokeWidth="1.15"
+      strokeLinejoin="miter"
+    />
+    <path d="M9.5 1.5V5H13" fill="#E1DFDD" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="miter" />
+    <path d="M5 7.5H10M5 10H8.5" stroke="#8A8886" strokeWidth="1" />
+    <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="0.8" fill="#107C10" />
+    <path d="M12.25 10.7V13.8M10.7 12.25H13.8" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
-// Folder Open with dropdown
+// Windows 10 File Explorer Open Folder (#FFC83D Gold front, #E6A100 Rear tab)
 export const IconFolderOpen: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M1.5 3 C1.5 2.5 2 2 2.5 2 L6 2 L7.5 3.5 L13.5 3.5 C14 3.5 14.5 4 14.5 4.5 L14.5 5.5 L1.5 5.5 Z" fill="#eab308" stroke="#ca8a04" strokeWidth="1" />
-    <path d="M1 6 L13 6 L15 13.5 L3 13.5 Z" fill="#facc15" stroke="#ca8a04" strokeWidth="1" strokeLinejoin="round" />
+    <path
+      d="M1.5 3H6L7.3 4.5H13.5V12.5H1.5V3Z"
+      fill="#E6A100"
+      stroke="#9C6500"
+      strokeWidth="0.95"
+      strokeLinejoin="miter"
+    />
+    <path d="M3 5H12.5V6.5H3V5Z" fill="#FFFFFF" fillOpacity="0.85" />
+    <path
+      d="M1.5 6.5H14.5L13.2 13H1.5V6.5Z"
+      fill="#FFC83D"
+      stroke="#9C6500"
+      strokeWidth="0.95"
+      strokeLinejoin="miter"
+    />
   </svg>
 );
 
-// File Save icon using attached SVG as-is
+// Windows 10 Classic Blue Floppy Save Diskette (#0078D4)
 export const IconSaveDisk: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <img
-    src="/assets/aistudio/favicon_23650500.svg"
-    alt="Save"
-    className={`${className} object-contain shrink-0`}
-    draggable={false}
-  />
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M2 2H11.8L14 4.2V14H2V2Z"
+      fill="#0078D4"
+      stroke="#004E8C"
+      strokeWidth="1"
+      strokeLinejoin="miter"
+    />
+    <rect x="4.5" y="2" width="6" height="4" fill="#E1DFDD" stroke="#004E8C" strokeWidth="0.8" />
+    <rect x="7.8" y="2.6" width="1.4" height="2.6" fill="#004E8C" />
+    <rect x="4" y="8.5" width="8" height="5.5" fill="#FFFFFF" stroke="#004E8C" strokeWidth="0.8" />
+    <path d="M5.5 10.5H10.5M5.5 12.2H9.2" stroke="#8A8886" strokeWidth="0.9" />
+  </svg>
 );
 
-// Cloud open / download
+// Windows 10 OneDrive / Cloud Open (#50E6FF + #0078D4)
 export const IconCloudOpen: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3.5 9.5 C2.5 9.5 1.5 8.7 1.5 7.5 C1.5 6.4 2.3 5.6 3.3 5.5 C3.8 3.8 5.3 2.5 7.2 2.5 C9.3 2.5 11 3.9 11.4 5.8 C12.6 6 13.5 7 13.5 8.2 C13.5 9.5 12.5 10.5 11.2 10.5 L3.5 10.5 Z" fill="#94a3b8" stroke="#475569" strokeWidth="1" />
-    <path d="M7.5 6 L7.5 11 M5.5 9 L7.5 11 L9.5 9" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M3.8 11H12.2C13.6 11 14.5 10 14.5 8.7C14.5 7.5 13.6 6.5 12.4 6.4C12 4.2 10.1 2.7 7.9 2.7C5.8 2.7 4 4.1 3.6 6C2.3 6.2 1.5 7.3 1.5 8.6C1.5 10 2.5 11 3.8 11Z"
+      fill="#50E6FF"
+      fillOpacity="0.28"
+      stroke="#0078D4"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <path d="M8 7.5V13.8M5.8 11.6L8 13.8L10.2 11.6" stroke="#0078D4" strokeWidth="1.4" strokeLinecap="square" strokeLinejoin="miter" />
   </svg>
 );
 
-// Cloud upload / publish
+// Cloud Save / Upload (#107C10 Windows Green arrow + #0078D4 Cloud)
 export const IconCloudSave: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3.5 9.5 C2.5 9.5 1.5 8.7 1.5 7.5 C1.5 6.4 2.3 5.6 3.3 5.5 C3.8 3.8 5.3 2.5 7.2 2.5 C9.3 2.5 11 3.9 11.4 5.8 C12.6 6 13.5 7 13.5 8.2 C13.5 9.5 12.5 10.5 11.2 10.5 L3.5 10.5 Z" fill="#94a3b8" stroke="#475569" strokeWidth="1" />
-    <path d="M7.5 11 L7.5 6 M5.5 8 L7.5 6 L9.5 8" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M3.8 11H12.2C13.6 11 14.5 10 14.5 8.7C14.5 7.5 13.6 6.5 12.4 6.4C12 4.2 10.1 2.7 7.9 2.7C5.8 2.7 4 4.1 3.6 6C2.3 6.2 1.5 7.3 1.5 8.6C1.5 10 2.5 11 3.8 11Z"
+      fill="#50E6FF"
+      fillOpacity="0.24"
+      stroke="#0078D4"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <path d="M8 14V7.8M5.8 10L8 7.8L10.2 10" stroke="#107C10" strokeWidth="1.45" strokeLinecap="square" strokeLinejoin="miter" />
   </svg>
 );
 
-// Printer
+// Windows 10 Printer (Silver body, crisp white paper feed, #0078D4 status LED)
 export const IconPrinter: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="4" y="1.5" width="8" height="4" fill="#ffffff" stroke="#475569" strokeWidth="1" />
-    <rect x="2" y="5.5" width="12" height="6" rx="1" fill="#64748b" stroke="#334155" strokeWidth="1" />
-    <rect x="4.5" y="8.5" width="7" height="6" fill="#f8fafc" stroke="#475569" strokeWidth="1" />
+    <rect x="4" y="1.5" width="8" height="4" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.05" />
+    <rect x="1.5" y="5" width="13" height="6" rx="0.7" fill="#D2D0CE" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="4" y="8.5" width="8" height="6" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.05" />
+    <path d="M5.5 10.5H10.5M5.5 12.2H9.5" stroke="#605E5C" strokeWidth="0.95" />
+    <rect x="11" y="6.2" width="1.6" height="1.2" fill="#0078D4" />
   </svg>
 );
 
-// Cut (Scissors on page)
+// Windows 10 Scissors / Cut
 export const IconCut: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M4 11 L12 3 M4 3 L12 11" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" />
-    <circle cx="3.5" cy="11.5" r="1.8" stroke="#334155" strokeWidth="1.2" />
-    <circle cx="3.5" cy="3.5" r="1.8" stroke="#334155" strokeWidth="1.2" />
+    <circle cx="4" cy="4.2" r="2" fill="#0078D4" fillOpacity="0.2" stroke="#0078D4" strokeWidth="1.25" />
+    <circle cx="4" cy="11.8" r="2" fill="#0078D4" fillOpacity="0.2" stroke="#0078D4" strokeWidth="1.25" />
+    <path d="M5.6 5.4L14 12.2M5.6 10.6L14 3.8" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
-// Copy (Two sheets)
+// Windows 10 Copy (Overlapping crisp white documents)
 export const IconCopyDoc: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="5.5" y="2" width="8" height="10" fill="#ffffff" stroke="#334155" strokeWidth="1.2" />
-    <path d="M2.5 5 L2.5 14 L10.5 14" stroke="#334155" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2.5" y="4" width="8" height="10" fill="#E1DFDD" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="5.5" y="1.5" width="8" height="10" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M7.2 4.5H11.8M7.2 6.8H11.8M7.2 9H10.2" stroke="#0078D4" strokeWidth="1" />
   </svg>
 );
 
-// Paste (Clipboard)
+// Windows 10 Clipboard Paste (Brown/Amber board + crisp white sheet)
 export const IconPasteDoc: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="3" width="9" height="11" rx="1" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
-    <rect x="5" y="5.5" width="9" height="9" fill="#ffffff" stroke="#334155" strokeWidth="1.2" />
-    <rect x="4" y="1.5" width="5" height="2.5" rx="0.5" fill="#f59e0b" stroke="#b45309" strokeWidth="0.8" />
+    <rect x="2.5" y="2.5" width="10" height="12" rx="0.6" fill="#D29200" fillOpacity="0.88" stroke="#7A5200" strokeWidth="1" />
+    <rect x="5" y="1.2" width="5" height="2.3" fill="#8A8886" stroke="#323130" strokeWidth="0.9" />
+    <rect x="4.5" y="4.5" width="8.5" height="9.5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" />
+    <path d="M6.2 7H11.2M6.2 9.2H11.2M6.2 11.4H9.6" stroke="#0078D4" strokeWidth="1" />
   </svg>
 );
 
-// Import [↓]
+// Import (#0078D4 Windows Blue arrow into tray)
 export const IconImportArrow: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 13 L14 13" stroke="#1e293b" strokeWidth="1.6" strokeLinecap="square" />
-    <path d="M8 2 L8 10 M4.5 6.5 L8 10 L11.5 6.5" stroke="#1e293b" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 10.5V14H14V10.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M8 2V10.5M5 7.5L8 10.5L11 7.5" stroke="#0078D4" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter" />
   </svg>
 );
 
-// Export [↑]
+// Export (#107C10 Windows Green arrow out of tray)
 export const IconExportArrow: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 13 L14 13" stroke="#1e293b" strokeWidth="1.6" strokeLinecap="square" />
-    <path d="M8 10 L8 2 M4.5 5.5 L8 2 L11.5 5.5" stroke="#1e293b" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 10.5V14H14V10.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M8 10.8V2.2M5 5.2L8 2.2L11 5.2" stroke="#107C10" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter" />
   </svg>
 );
 
-// Export PDF [↑ PDF]
+// Export PDF (Crisp white document with #D13438 red header/badge)
 export const IconExportPdf: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M8 8 L8 1.5 M5.5 4 L8 1.5 L10.5 4" stroke="#dc2626" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    <text x="8" y="14" textAnchor="middle" fontSize="6" fontWeight="bold" fill="#dc2626" fontFamily="Arial, sans-serif">
-      PDF
-    </text>
+    <path d="M2.5 1.5H9.5L13 5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M9.5 1.5V5H13" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+    <rect x="4" y="6.8" width="7.5" height="5.2" rx="0.5" fill="#D13438" />
+    <path d="M5.5 10.5C6.8 7.6 9.2 7.6 10 10.5C8 9.7 7 9.7 5.5 10.5Z" stroke="#FFFFFF" strokeWidth="1.1" strokeLinejoin="round" />
   </svg>
 );
 
-// Full screen preview (F9)
+// Full Screen Preview (F9)
 export const IconFullScreenF9: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="3" y="3" width="10" height="10" fill="#1e293b" />
-    <path d="M1 4 L1 1 L4 1 M12 1 L15 1 L15 4 M1 12 L1 15 L4 15 M15 12 L15 15 L12 15" stroke="#334155" strokeWidth="1.5" />
+    <rect x="4" y="4" width="8" height="8" fill="#50E6FF" fillOpacity="0.28" stroke="#0078D4" strokeWidth="1.15" />
+    <path
+      d="M1.5 5.5V1.5H5.5M10.5 1.5H14.5V5.5M14.5 10.5V14.5H10.5M5.5 14.5H1.5V10.5"
+      stroke="currentColor"
+      strokeWidth="1.35"
+      strokeLinecap="square"
+    />
   </svg>
 );
 
-// Show Rulers with eye [👁 L]
+// Show Rulers with eye
 export const IconRulersEye: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 2 L2 14 L14 14" stroke="#334155" strokeWidth="1.5" />
-    <path d="M2 5 L4 5 M2 8 L5 8 M2 11 L4 11 M5 14 L5 12 M8 14 L8 11 M11 14 L11 12" stroke="#475569" strokeWidth="1" />
-    <ellipse cx="9" cy="7" rx="3.5" ry="2" stroke="#0284c7" strokeWidth="1" fill="#e0f2fe" />
-    <circle cx="9" cy="7" r="1.2" fill="#0284c7" />
+    <path d="M2 2H4.8V11.2H14V14H2V2Z" fill="#FFC83D" fillOpacity="0.75" stroke="currentColor" strokeWidth="1" />
+    <path d="M2 5H4M2 8H4.2M7 14V12M10.5 14V12" stroke="currentColor" strokeWidth="0.95" />
+    <path d="M6.5 6.2C7.8 4.2 11.7 4.2 13 6.2C11.7 8.2 7.8 8.2 6.5 6.2Z" fill="#FFFFFF" stroke="#0078D4" strokeWidth="1.15" />
+    <circle cx="9.75" cy="6.2" r="1.1" fill="#0078D4" />
   </svg>
 );
 
-// Show Grid with eye [👁 #]
+// Show Grid (Crisp Windows 10 grid lines)
 export const IconGridEye: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2" width="12" height="12" stroke="#64748b" strokeWidth="1" fill="none" />
-    <path d="M6 2 L6 14 M10 2 L10 14 M2 6 L14 6 M2 10 L14 10" stroke="#94a3b8" strokeWidth="1" />
-    <circle cx="11" cy="5" r="1.5" fill="#0284c7" />
+    <rect x="2" y="2" width="12" height="12" fill="#FFFFFF" fillOpacity="0.9" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M6 2V14M10 2V14M2 6H14M2 10H14" stroke="#8A8886" strokeWidth="0.95" />
+    <rect x="9" y="5" width="2" height="2" fill="#0078D4" />
   </svg>
 );
 
-// Show Guidelines with eye [👁 +]
+// Show Guidelines
 export const IconGuidelinesEye: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="2" x2="8" y2="14" stroke="#0284c7" strokeWidth="1.2" strokeDasharray="2 2" />
-    <line x1="2" y1="8" x2="14" y2="8" stroke="#0284c7" strokeWidth="1.2" strokeDasharray="2 2" />
-    <circle cx="8" cy="8" r="2.5" stroke="#334155" strokeWidth="1" fill="#ffffff" />
-    <circle cx="8" cy="8" r="1" fill="#0284c7" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.25" strokeDasharray="2 1.8" />
+    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#0078D4" strokeWidth="1.25" strokeDasharray="2 1.8" />
+    <rect x="5.5" y="5.5" width="5" height="5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="7" y="7" width="2" height="2" fill="#0078D4" />
   </svg>
 );
 
-// Snap toggle with active magnet or red cross
+// Snap Toggle (Windows 10 U-Magnet with silver/red poles)
 export const IconSnapToggle: React.FC<{ className?: string; active?: boolean }> = ({ className = 'w-4 h-4', active = true }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M4 3 L4 8 C4 10.2 5.8 12 8 12 C10.2 12 12 10.2 12 8 L12 3" stroke={active ? '#0284c7' : '#64748b'} strokeWidth="1.6" />
-    <rect x="3" y="2" width="2" height="3" fill="#ef4444" />
-    <rect x="11" y="2" width="2" height="3" fill="#ef4444" />
+    <path
+      d="M4 2.5V8C4 10.2 5.8 12 8 12C10.2 12 12 10.2 12 8V2.5"
+      stroke={active ? '#E81123' : 'currentColor'}
+      strokeWidth="2.1"
+      strokeLinecap="butt"
+    />
+    <rect x="2.8" y="1.8" width="2.4" height="2.2" fill="#D2D0CE" stroke="currentColor" strokeWidth="0.7" />
+    <rect x="10.8" y="1.8" width="2.4" height="2.2" fill="#D2D0CE" stroke="currentColor" strokeWidth="0.7" />
     {active ? (
-      <circle cx="12" cy="12" r="2.5" fill="#16a34a" />
+      <rect x="10.5" y="10.5" width="4.5" height="4.5" rx="0.8" fill="#107C10" />
     ) : (
-      <path d="M11 11 L15 15 M15 11 L11 15" stroke="#dc2626" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M11 11L14.5 14.5M14.5 11L11 14.5" stroke="#E81123" strokeWidth="1.5" />
     )}
   </svg>
 );
 
-// Mirror Horizontal (Left/Right)
+// Mirror Horizontal
 export const IconMirrorHorizontal: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0284c7" strokeWidth="1.2" strokeDasharray="2 1" />
-    <path d="M6.5 4 L3 8 L6.5 12 Z" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" />
-    <path d="M9.5 4 L13 8 L9.5 12 Z" fill="#94a3b8" stroke="#1e293b" strokeWidth="1.2" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.5" />
+    <path d="M6 4L2 8L6 12V4Z" fill="#0078D4" stroke="#005A9E" strokeWidth="0.9" strokeLinejoin="miter" />
+    <path d="M10 4L14 8L10 12V4Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="miter" />
   </svg>
 );
 
-// Mirror Vertical (Top/Bottom)
+// Mirror Vertical
 export const IconMirrorVertical: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#0284c7" strokeWidth="1.2" strokeDasharray="2 1" />
-    <path d="M4 6.5 L8 3 L12 6.5 Z" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" />
-    <path d="M4 9.5 L8 13 L12 9.5 Z" fill="#94a3b8" stroke="#1e293b" strokeWidth="1.2" />
+    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.5" />
+    <path d="M4 6L8 2L12 6H4Z" fill="#0078D4" stroke="#005A9E" strokeWidth="0.9" strokeLinejoin="miter" />
+    <path d="M4 10L8 14L12 10H4Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="miter" />
   </svg>
 );
 
-// Corner styles for NuraDraw rectangle
+// Corner Styles
 export const IconCornerRound: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 13 L3 8 C3 5.2 5.2 3 8 3 L13 3" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M3 13.5V8.5C3 5.5 5.5 3 8.5 3H13.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="square" />
+    <rect x="7.5" y="7.5" width="3" height="3" fill="#0078D4" />
   </svg>
 );
 
 export const IconCornerScallop: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 13 L3 8 C5.8 8 8 5.8 8 3 L13 3" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M3 13.5V8.5C6 8.5 8.5 6 8.5 3H13.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="square" />
+    <rect x="4" y="4" width="3" height="3" fill="#0078D4" />
   </svg>
 );
 
 export const IconCornerChamfer: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 13 L3 8 L8 3 L13 3" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="miter" />
+    <path d="M3 13.5V8L8 3H13.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="square" strokeLinejoin="miter" />
+    <rect x="4.5" y="4.5" width="2.6" height="2.6" fill="#0078D4" />
   </svg>
 );
 
-// Pen Nib outline icon
+// Pen Nib outline icon (Windows Gold/Brass nib)
 export const IconPenNib: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg viewBox="0 0 16 16" className={className} fill="currentColor">
-    <path d="M8 1 L11.5 5.5 L10 8 L11 14 L8 13 L5 14 L6 8 L4.5 5.5 Z" stroke="#1e293b" strokeWidth="0.8" />
-    <circle cx="8" cy="6.5" r="1" fill="#ffffff" />
-    <line x1="8" y1="1" x2="8" y2="5.5" stroke="#ffffff" strokeWidth="0.8" />
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M8 1.5L12 7.5L10.3 11.5H5.7L4 7.5L8 1.5Z"
+      fill="#FFC83D"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinejoin="miter"
+    />
+    <path d="M8 1.5V7" stroke="currentColor" strokeWidth="1.05" />
+    <circle cx="8" cy="7.5" r="1.1" fill="#0078D4" />
+    <rect x="5" y="11.5" width="6" height="2.5" fill="#0078D4" stroke="currentColor" strokeWidth="1" />
   </svg>
 );
 
-// NuraDraw PowerClip Icon
+// PowerClip Icon (Windows 10 container + shape clip)
 export const IconPowerClip: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" stroke="#0072bc" strokeWidth="1.2" fill="#e0f2fe" strokeDasharray="3 1.5" />
-    <circle cx="8" cy="8" r="3.2" fill="#0284c7" stroke="#0369a1" strokeWidth="0.8" />
-    <path d="M1.5 1.5 L5.5 5.5 M5.5 2.5 L5.5 5.5 L2.5 5.5" stroke="#e11d48" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2" y="2" width="12" height="12" fill="#E6F2FA" fillOpacity="0.5" stroke="#0078D4" strokeWidth="1.15" strokeDasharray="2.5 1.5" />
+    <circle cx="8.5" cy="8.5" r="3" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" />
+    <path d="M1.5 1.5L6.2 6.2M6.2 3.2V6.2H3.2" stroke="#E81123" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
 // New from Template
 export const IconTemplateNew: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="3" width="9" height="11" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <line x1="2" y1="6" x2="11" y2="6" stroke="#374151" strokeWidth="1" />
-    <line x1="6" y1="6" x2="6" y2="14" stroke="#9ca3af" strokeWidth="0.9" />
-    <circle cx="12" cy="4" r="2.6" fill="#22c55e" stroke="#16a34a" strokeWidth="0.8" />
-    <path d="M12 2.6V5.4M10.6 4H13.4" stroke="#ffffff" strokeWidth="1.1" strokeLinecap="round" />
+    <rect x="2" y="2" width="10.5" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="2" y="2" width="10.5" height="2.8" fill="#0078D4" />
+    <path d="M5.5 4.8V14" stroke="#8A8886" strokeWidth="0.95" />
+    <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="0.8" fill="#107C10" />
+    <path d="M12.25 10.7V13.8M10.7 12.25H13.8" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
-// Close Window / Document
+// Close Document (Windows 10 window + #E81123 X badge)
 export const IconCloseDoc: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="3" width="11" height="10" rx="0.8" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <line x1="2" y1="5.5" x2="13" y2="5.5" stroke="#64748b" strokeWidth="0.9" />
-    <path d="M10.5 1.5 L14.5 5.5 M14.5 1.5 L10.5 5.5" stroke="#dc2626" strokeWidth="1.6" strokeLinecap="round" />
+    <rect x="2" y="2.5" width="11" height="11" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="2" y="2.5" width="11" height="2.6" fill="#D2D0CE" stroke="currentColor" strokeWidth="1" />
+    <rect x="9.5" y="1.5" width="5.5" height="5.5" rx="0.6" fill="#E81123" />
+    <path d="M11 3L13.5 5.5M13.5 3L11 5.5" stroke="#FFFFFF" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
-// Close All Windows / Documents
+// Close All Documents
 export const IconCloseAllDocs: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="4.5" y="2" width="8.5" height="8" fill="#f8fafc" stroke="#475569" strokeWidth="1" />
-    <rect x="2" y="5" width="9" height="8.5" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <line x1="2" y1="7.3" x2="11" y2="7.3" stroke="#64748b" strokeWidth="0.9" />
-    <path d="M10.5 1.5 L14.5 5.5 M14.5 1.5 L10.5 5.5" stroke="#dc2626" strokeWidth="1.6" strokeLinecap="round" />
+    <rect x="4.5" y="1.5" width="9" height="9" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+    <rect x="1.5" y="4.8" width="9.5" height="9.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="1.5" y="4.8" width="9.5" height="2.4" fill="#0078D4" />
+    <rect x="9.5" y="1.5" width="5.5" height="5.5" rx="0.6" fill="#E81123" />
+    <path d="M11 3L13.5 5.5M13.5 3L11 5.5" stroke="#FFFFFF" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
-// Save As (Floppy with green +)
+// Save As (Windows 10 blue floppy + green +)
 export const IconSaveAsPlus: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 3 L10 3 L12 5 L12 14 L2 14 Z" fill="#1e293b" stroke="#0f172a" strokeWidth="1" />
-    <rect x="4" y="3" width="5" height="3.5" fill="#ffffff" />
-    <rect x="4" y="8.5" width="6" height="4.5" fill="#f1f5f9" />
-    <circle cx="12.2" cy="4.2" r="2.7" fill="#22c55e" stroke="#16a34a" strokeWidth="0.8" />
-    <path d="M12.2 2.8V5.6M10.8 4.2H13.6" stroke="#ffffff" strokeWidth="1.1" strokeLinecap="round" />
+    <path d="M2 2H11L13 4V13.5H2V2Z" fill="#0078D4" stroke="#004E8C" strokeWidth="1" />
+    <rect x="4.5" y="2" width="5" height="3.5" fill="#E1DFDD" stroke="#004E8C" strokeWidth="0.8" />
+    <rect x="4" y="8" width="7" height="5.5" fill="#FFFFFF" stroke="#004E8C" strokeWidth="0.8" />
+    <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="0.8" fill="#107C10" />
+    <path d="M12.25 10.7V13.8M10.7 12.25H13.8" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
 // Save as Template
 export const IconSaveTemplate: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="4.5" y="2" width="9" height="10" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <line x1="4.5" y1="4.8" x2="13.5" y2="4.8" stroke="#64748b" strokeWidth="0.9" />
-    <path d="M2 7 L7.5 7 L9 8.5 L9 14.5 L2 14.5 Z" fill="#1e293b" stroke="#0f172a" strokeWidth="0.9" />
-    <rect x="3.5" y="10.5" width="4" height="3.2" fill="#f8fafc" />
+    <rect x="4" y="1.5" width="10" height="10" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="4" y="1.5" width="10" height="2.6" fill="#0078D4" />
+    <rect x="1.5" y="6.5" width="7.5" height="7.5" fill="#0078D4" stroke="#004E8C" strokeWidth="0.9" />
+    <rect x="3" y="10.2" width="4.5" height="3.8" fill="#FFFFFF" />
   </svg>
 );
 
 // Revert Document
 export const IconRevertDoc: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 5 L9.5 5 L11.5 7 L11.5 14 L2.5 14 Z" fill="#94a3b8" stroke="#64748b" strokeWidth="1" />
-    <rect x="4.5" y="9" width="5" height="4" fill="#f8fafc" />
-    <path d="M11.5 3.5 C13.5 3.5 14.5 5 14 7" stroke="#64748b" strokeWidth="1.2" strokeDasharray="1.5 1.2" strokeLinecap="round" />
-    <path d="M10.5 3.5 L12.5 2 L12.5 5 Z" fill="#64748b" />
+    <path d="M2.5 4.2H9L11.8 7V14.5H2.5V4.2Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M10.2 2.5C12.8 2.5 14.2 4 14 6.5" stroke="#0078D4" strokeWidth="1.45" strokeLinecap="square" />
+    <path d="M11 1L9 2.6L11 4.2" fill="#0078D4" />
   </svg>
 );
 
 // Print Preview
 export const IconPrintPreview: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 1.5 H9.5 L12.5 4.5 V13.5 H3 Z" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <path d="M9.5 1.5 V4.5 H12.5" stroke="#374151" strokeWidth="1" />
-    <circle cx="9.5" cy="9.5" r="2.8" fill="#e0f2fe" stroke="#1e293b" strokeWidth="1.2" />
-    <line x1="11.6" y1="11.6" x2="14.2" y2="14.2" stroke="#1e293b" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M2.5 1.5H9L12 4.5V14H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <circle cx="9.8" cy="9.8" r="2.8" fill="#50E6FF" fillOpacity="0.45" stroke="#0078D4" strokeWidth="1.25" />
+    <path d="M12 12L14.5 14.5" stroke="#005A9E" strokeWidth="1.7" strokeLinecap="square" />
   </svg>
 );
 
 // Document Properties
 export const IconDocProperties: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 1.5 H9 L11.5 4 V14 H2.5 Z" fill="#ffffff" stroke="#374151" strokeWidth="1.1" />
-    <path d="M5 6 H9 M5 8.5 H8.5 M5 11 H7.5" stroke="#475569" strokeWidth="1" strokeLinecap="round" />
-    <line x1="10" y1="7" x2="14.5" y2="7" stroke="#1e293b" strokeWidth="1.2" />
-    <line x1="10" y1="10" x2="14.5" y2="10" stroke="#1e293b" strokeWidth="1.2" />
-    <line x1="10" y1="13" x2="14.5" y2="13" stroke="#1e293b" strokeWidth="1.2" />
+    <path d="M2 1.5H8L11 4.5V14.5H2V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M4 6.5H8.5M4 9.2H7.5M10.5 7.5H14.5M10.5 10.2H14.5M10.5 12.8H14.5" stroke="#0078D4" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
-// Exit / Power
+// Exit / Power (#E81123 Windows Red)
 export const IconPowerExit: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M5.2 4.2 A4.8 4.8 0 1 0 10.8 4.2" stroke="#374151" strokeWidth="1.4" strokeLinecap="round" />
-    <line x1="8" y1="1.8" x2="8" y2="7.5" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M4.8 4A5 5 0 1 0 11.2 4" stroke="#E81123" strokeWidth="1.55" strokeLinecap="square" />
+    <line x1="8" y1="1.8" x2="8" y2="7.5" stroke="#E81123" strokeWidth="1.6" strokeLinecap="square" />
   </svg>
 );
 
-// Edit Menu Icons (Matching NuraDraw edit_tab_c6f39bd0.jpg)
+// Edit Menu Icons (Windows 10 Azure Blue #0078D4 curved arrows)
 
-// Undo curved counter-clockwise arrow
 export const IconUndoMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M5.5 4.5 H9.5 A4 4 0 1 1 5 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M6.2 2 L3.2 4.5 L6.2 7 Z" fill="currentColor" />
+    <path d="M4.5 5H9.5A4 4 0 1 1 5.5 12.5" stroke="#0078D4" strokeWidth="1.5" strokeLinecap="square" />
+    <path d="M6.5 2.5L3.2 5L6.5 7.5V2.5Z" fill="#0078D4" />
   </svg>
 );
 
-// Redo curved clockwise arrow
 export const IconRedoMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M10.5 4.5 H6.5 A4 4 0 1 0 11 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M9.8 2 L12.8 4.5 L9.8 7 Z" fill="currentColor" />
+    <path d="M11.5 5H6.5A4 4 0 1 0 10.5 12.5" stroke="#0078D4" strokeWidth="1.5" strokeLinecap="square" />
+    <path d="M9.5 2.5L12.8 5L9.5 7.5V2.5Z" fill="#0078D4" />
   </svg>
 );
 
-// Repeat clockwise loop with double chevron
 export const IconRepeatMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M8.5 3.5 A4.5 4.5 0 1 1 3.8 8.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeDasharray="2 1.2" />
-    <path d="M4.2 3.5 H8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    <path d="M7.5 1.5 L10.3 3.5 L7.5 5.5 Z" fill="currentColor" />
+    <path d="M11.5 5.2A4.5 4.5 0 1 0 12 10.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" />
+    <path d="M8.8 5.5H12.5V1.8" stroke="#0078D4" strokeWidth="1.45" strokeLinecap="square" />
   </svg>
 );
 
-// Bring into Focus (dashed frame + arrow pointer)
 export const IconBringIntoFocus: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2.5" y="6.5" width="7" height="7" stroke="#1e293b" strokeWidth="1.1" strokeDasharray="2 1.2" />
-    <rect x="4.5" y="8.5" width="3" height="3" fill="#475569" />
-    <rect x="1.5" y="5.5" width="2" height="2" fill="#1e293b" />
-    <rect x="8.5" y="12.5" width="2" height="2" fill="#1e293b" />
-    <path d="M13.5 2 L9.5 6 M9.5 3 V6 H12.5" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 5V2H5M11 2H14V5M14 11V14H11M5 14H2V11" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
+    <rect x="5.5" y="5.5" width="5" height="5" fill="#50E6FF" fillOpacity="0.4" stroke="#0078D4" strokeWidth="1.2" />
   </svg>
 );
 
-// Exit Focus Mode (dashed frame + check)
 export const IconExitFocusMode: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2.5" y="6.5" width="7" height="7" stroke="currentColor" strokeWidth="1.1" strokeDasharray="2 1.2" />
-    <rect x="4.5" y="8.5" width="3" height="3" stroke="currentColor" strokeWidth="0.9" />
-    <path d="M9 5.5 L10.8 7.3 L14.2 3" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2" y="5.5" width="8" height="8" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 1.5" />
+    <rect x="4.5" y="8" width="3" height="3" fill="#0078D4" fillOpacity="0.35" />
+    <path d="M8.5 5.5L10.5 7.5L14.5 3" stroke="#107C10" strokeWidth="1.65" strokeLinecap="square" />
   </svg>
 );
 
-// Copy Properties From...
 export const IconCopyProperties: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2" width="6.5" height="7.5" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <rect x="7.5" y="6.5" width="6.5" height="7.5" fill="#e2e8f0" stroke="#334155" strokeWidth="1" />
-    <path d="M4 5.5 L6.5 4 L5.5 7 Z" fill="#0284c7" />
-    <circle cx="11" cy="10.2" r="1.4" fill="#334155" />
+    <rect x="2" y="2" width="6.5" height="7.5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="7.5" y="6.5" width="6.5" height="7.5" fill="#E6F2FA" stroke="#0078D4" strokeWidth="1.15" />
+    <rect x="9.5" y="9" width="2.5" height="2.5" fill="#0078D4" />
   </svg>
 );
 
-// Paste in View (Clipboard + centered view arrows)
 export const IconPasteInView: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2.5" width="8.5" height="10.5" rx="1" fill="#334155" />
-    <rect x="4.2" y="1.2" width="4" height="2" rx="0.5" fill="#64748b" />
-    <rect x="5.5" y="5.5" width="8.5" height="9" fill="#ffffff" stroke="#1e293b" strokeWidth="1.1" />
-    <path d="M9.75 7.2 V12.8 M7 10 H12.5" stroke="#0284c7" strokeWidth="1.1" />
-    <circle cx="9.75" cy="10" r="1.1" fill="#0284c7" />
+    <rect x="2" y="2" width="8" height="10" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="6.5" y="6.5" width="7.5" height="7.5" fill="#E6F2FA" stroke="#0078D4" strokeWidth="1.15" />
+    <rect x="9.2" y="9.2" width="2.2" height="2.2" fill="#0078D4" />
   </svg>
 );
 
-// Paste Special... (Clipboard + node box)
 export const IconPasteSpecial: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2.5" width="8.5" height="10.5" rx="1" fill="#334155" />
-    <rect x="4.2" y="1.2" width="4" height="2" rx="0.5" fill="#64748b" />
-    <rect x="6" y="6.5" width="8" height="8" fill="#ffffff" stroke="#1e293b" strokeWidth="1.1" />
-    <rect x="5.2" y="5.7" width="1.8" height="1.8" fill="#1e293b" />
-    <rect x="13" y="5.7" width="1.8" height="1.8" fill="#1e293b" />
-    <rect x="5.2" y="13.5" width="1.8" height="1.8" fill="#1e293b" />
-    <rect x="13" y="13.5" width="1.8" height="1.8" fill="#1e293b" />
+    <rect x="2" y="2" width="8" height="10" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="6.5" y="6.5" width="7.5" height="7.5" fill="#FFF4CE" stroke="#D29200" strokeWidth="1.15" />
+    <rect x="9.2" y="9.2" width="2.2" height="2.2" fill="#D29200" />
   </svg>
 );
 
-// Delete Trash Can
 export const IconTrashDelete: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 4 H13 M5.5 4 V2.5 H10.5 V4" stroke="#1e293b" strokeWidth="1.3" strokeLinecap="round" />
-    <path d="M4 4.5 L4.8 14 H11.2 L12 4.5 Z" fill="#334155" stroke="#1e293b" strokeWidth="1" />
-    <line x1="6.5" y1="6.5" x2="6.8" y2="12" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" />
-    <line x1="8" y1="6.5" x2="8" y2="12" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" />
-    <line x1="9.5" y1="6.5" x2="9.2" y2="12" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" />
+    <path d="M2.5 4H13.5M6 4V2H10V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square" />
+    <path d="M4 4L4.8 14H11.2L12 4H4Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="miter" />
+    <path d="M6.5 6.5V11.5M9.5 6.5V11.5" stroke="#E81123" strokeWidth="1.15" />
   </svg>
 );
 
-// Duplicate (two overlapping squares + bright green +)
 export const IconDuplicatePlus: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="4.5" width="6.5" height="6.5" fill="#ffffff" stroke="#334155" strokeWidth="1.1" />
-    <rect x="6.5" y="7.5" width="6.5" height="6.5" fill="#ffffff" stroke="#334155" strokeWidth="1.1" />
-    <rect x="9" y="1.5" width="5.5" height="5.5" rx="0.8" fill="#22c55e" />
-    <path d="M11.75 2.7 V5.8 M10.2 4.25 H13.3" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" />
+    <rect x="2" y="4.5" width="6.5" height="6.5" fill="#E1DFDD" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="5.5" y="7.5" width="6.5" height="6.5" fill="#E6F2FA" stroke="#0078D4" strokeWidth="1.1" />
+    <rect x="9.5" y="1.5" width="5" height="5" rx="0.6" fill="#107C10" />
+    <path d="M12 2.5V5.5M10.5 4H13.5" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="square" />
   </svg>
 );
 
-// Clone (dual silhouettes: solid left, outlined right)
 export const IconCloneDual: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <circle cx="4.5" cy="3.5" r="1.4" fill="#334155" />
-    <path d="M2.2 6.5 H6.8 L5.3 13.5 H3.7 Z" fill="#334155" />
-    <circle cx="11.5" cy="3.5" r="1.4" stroke="#334155" strokeWidth="1.1" fill="#ffffff" />
-    <path d="M9.2 6.5 H13.8 L12.3 13.5 H10.7 Z" stroke="#334155" strokeWidth="1.1" fill="#ffffff" />
+    <rect x="1.8" y="3.2" width="6" height="9.6" fill="#0078D4" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="8.2" y="3.2" width="6" height="9.6" fill="#FFFFFF" stroke="#0078D4" strokeWidth="1.15" strokeDasharray="2 1.2" />
   </svg>
 );
 
-// View Menu Icons (Matching view tab screenshot)
+// View Menu Icons
 
-// Preview Selected Only
 export const IconPreviewSelected: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2.5" y="2.5" width="11" height="11" stroke="currentColor" strokeWidth="1.1" strokeDasharray="2 1.5" />
-    <rect x="1.5" y="1.5" width="2.2" height="2.2" fill="currentColor" />
-    <rect x="12.3" y="1.5" width="2.2" height="2.2" fill="currentColor" />
-    <rect x="1.5" y="12.3" width="2.2" height="2.2" fill="currentColor" />
-    <rect x="12.3" y="12.3" width="2.2" height="2.2" fill="currentColor" />
-    <rect x="5" y="5" width="6" height="6" fill="currentColor" opacity="0.25" stroke="currentColor" strokeWidth="1" />
+    <rect x="2" y="2" width="12" height="12" stroke="currentColor" strokeWidth="1.15" strokeDasharray="2 1.5" />
+    <rect x="5" y="5" width="6" height="6" fill="#50E6FF" fillOpacity="0.4" stroke="#0078D4" strokeWidth="1.2" />
   </svg>
 );
 
-// Zoom In (+)
 export const IconZoomInMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <circle cx="6.8" cy="6.8" r="4.6" fill="#ffffff" stroke="currentColor" strokeWidth="1.2" />
-    <path d="M6.8 4.6 V9 M4.6 6.8 H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="10.2" y1="10.2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="6.8" cy="6.8" r="4.5" fill="#50E6FF" fillOpacity="0.3" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M6.8 4.8V8.8M4.8 6.8H8.8" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M10.2 10.2L14 14" stroke="#323130" strokeWidth="1.8" strokeLinecap="square" />
   </svg>
 );
 
-// Zoom Out (-)
 export const IconZoomOutMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <circle cx="6.8" cy="6.8" r="4.6" fill="#ffffff" stroke="currentColor" strokeWidth="1.2" />
-    <path d="M4.6 6.8 H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="10.2" y1="10.2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="6.8" cy="6.8" r="4.5" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M4.8 6.8H8.8" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M10.2 10.2L14 14" stroke="#323130" strokeWidth="1.8" strokeLinecap="square" />
   </svg>
 );
 
-// Zoom To Fit
 export const IconZoomToFitMenu: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <circle cx="6.8" cy="6.8" r="4.6" fill="#ffffff" stroke="currentColor" strokeWidth="1.2" />
-    <rect x="4.5" y="4.5" width="4.6" height="4.6" stroke="currentColor" strokeWidth="0.9" />
-    <line x1="10.2" y1="10.2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="6.8" cy="6.8" r="4.5" fill="#50E6FF" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.2" />
+    <rect x="4.8" y="4.8" width="4" height="4" stroke="#0078D4" strokeWidth="1.15" />
+    <path d="M10.2 10.2L14 14" stroke="#323130" strokeWidth="1.8" strokeLinecap="square" />
   </svg>
 );
 
-// Layout Menu Icons (Matching layout_tab_457dd0e8.png)
+// Layout Menu Icons
 
-// Insert Page... (document with lines + green + badge)
 export const IconInsertPage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9.5 L11.5 4 V14 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="4.2" y1="6" x2="8.8" y2="6" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="8.2" x2="9.8" y2="8.2" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="10.4" x2="9.8" y2="10.4" stroke="#64748b" strokeWidth="1" />
-    <rect x="9.5" y="1" width="5.5" height="5.5" rx="0.8" fill="#16a34a" />
-    <path d="M12.25 2.2 V5.3 M10.7 3.75 H13.8" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" />
+    <path d="M2.5 1.5H9L12 4.5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M4.5 6.8H8.5M4.5 9.2H8.5" stroke="#8A8886" strokeWidth="1" />
+    <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="0.8" fill="#107C10" />
+    <path d="M12.25 10.7V13.8M10.7 12.25H13.8" stroke="#FFFFFF" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
-// Duplicate Page... (overlapping pages + green + badge)
 export const IconDuplicatePage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2.5" width="6.5" height="8.5" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="3.3" y1="5" x2="7.2" y2="5" stroke="#64748b" strokeWidth="0.9" />
-    <line x1="3.3" y1="7" x2="7.2" y2="7" stroke="#64748b" strokeWidth="0.9" />
-    <rect x="6" y="6" width="6.5" height="8.5" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="7.3" y1="8.5" x2="11.2" y2="8.5" stroke="#64748b" strokeWidth="0.9" />
-    <line x1="7.3" y1="10.5" x2="11.2" y2="10.5" stroke="#64748b" strokeWidth="0.9" />
-    <rect x="9.5" y="1" width="5.5" height="5.5" rx="0.8" fill="#16a34a" />
-    <path d="M12.25 2.2 V5.3 M10.7 3.75 H13.8" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" />
+    <rect x="2" y="2" width="7" height="9" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+    <rect x="5" y="5" width="7" height="9" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="9.5" y="1.5" width="5" height="5" rx="0.6" fill="#107C10" />
+    <path d="M12 2.5V5.5M10.5 4H13.5" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="square" />
   </svg>
 );
 
-// Rename Page... (page + I-beam rename cursor)
 export const IconRenamePage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9.5 L11.5 4 V14 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="4.2" y1="6" x2="8.2" y2="6" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="8.5" x2="9.5" y2="8.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="11" x2="9.5" y2="11" stroke="#64748b" strokeWidth="1" />
-    <path d="M10.5 2 H14.5 M10.5 7 H14.5 M12.5 2 V7" stroke="#1e293b" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M2.5 1.5H9L12 4.5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M10.2 2.5H14.2M10.2 7.5H14.2M12.2 2.5V7.5" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
-// Delete Page... (page + red minus circle)
 export const IconDeletePage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9.5 L11.5 4 V14 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="4.2" y1="6" x2="8.5" y2="6" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="8.5" x2="9.8" y2="8.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="11" x2="9.8" y2="11" stroke="#64748b" strokeWidth="1" />
-    <circle cx="12.2" cy="3.8" r="2.9" fill="#ef4444" />
-    <line x1="10.8" y1="3.8" x2="13.6" y2="3.8" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" />
+    <path d="M2.5 1.5H9L12 4.5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="9.5" y="9.5" width="5.5" height="5.5" rx="0.8" fill="#E81123" />
+    <path d="M10.8 12.25H13.7" stroke="#FFFFFF" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
-// Go to Page... (page + diagonal pen/arrow)
 export const IconGoToPage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9.5 L11.5 4 V14 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="4.2" y1="6.5" x2="8.2" y2="6.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="9" x2="9.5" y2="9" stroke="#64748b" strokeWidth="1" />
-    <line x1="4.2" y1="11.5" x2="9.5" y2="11.5" stroke="#64748b" strokeWidth="1" />
-    <path d="M13.8 1.8 L9.2 6.4 L8.6 7.8 L10 7.2 L14.6 2.6 Z" fill="#334155" stroke="#1e293b" strokeWidth="0.6" />
+    <path d="M2.5 1.5H9L12 4.5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M9 7L14 2M10.5 2H14V5.5" stroke="#0078D4" strokeWidth="1.4" strokeLinecap="square" />
   </svg>
 );
 
-// On Active Layer (orange top diamond layer + gray lower layers)
 export const IconLayerActive: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M8 10.5 L13.5 13 L8 15 L2.5 13 Z" fill="#cbd5e1" stroke="#475569" strokeWidth="0.8" />
-    <path d="M8 6.5 L13.5 9 L8 11.2 L2.5 9 Z" fill="#e2e8f0" stroke="#475569" strokeWidth="0.8" />
-    <path d="M8 2 L14 4.8 L8 7.5 L2 4.8 Z" fill="#f97316" stroke="#c2410c" strokeWidth="0.9" />
+    <path d="M2 11L8 14L14 11" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="miter" />
+    <path d="M2 8L8 11L14 8" stroke="#0078D4" strokeWidth="1.25" strokeLinejoin="miter" />
+    <path d="M8 2L14 5L8 8L2 5L8 2Z" fill="#FFC83D" stroke="#9C6500" strokeWidth="1" strokeLinejoin="miter" />
   </svg>
 );
 
-// On All Pages (1-2-3 overlapping pages)
+// All / Odd / Even Pages
 export const IconAllPages123: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="1.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="3.2" y="7.2" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">1</text>
-    <rect x="4.8" y="4" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="6.5" y="9.8" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">2</text>
-    <rect x="8.2" y="6.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="9.9" y="12.3" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">3</text>
+    <rect x="1.8" y="1.8" width="6.5" height="8" fill="#E6F2FA" stroke="currentColor" strokeWidth="1" />
+    <rect x="4.8" y="3.8" width="6.5" height="8" fill="#E6F2FA" stroke="currentColor" strokeWidth="1" />
+    <rect x="7.8" y="5.8" width="6.5" height="8" fill="#FFFFFF" stroke="#0078D4" strokeWidth="1.15" />
   </svg>
 );
 
-// On All Odd Pages (1-3-5 overlapping pages)
 export const IconOddPages135: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="1.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="3.2" y="7.2" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">1</text>
-    <rect x="4.8" y="4" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="6.5" y="9.8" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">3</text>
-    <rect x="8.2" y="6.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="9.9" y="12.3" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">5</text>
+    <rect x="1.8" y="1.8" width="6.5" height="8" fill="#DFF6DD" stroke="#107C10" strokeWidth="1.1" />
+    <rect x="4.8" y="3.8" width="6.5" height="8" stroke="currentColor" strokeWidth="1" strokeDasharray="1.5 1.5" opacity="0.55" />
+    <rect x="7.8" y="5.8" width="6.5" height="8" fill="#DFF6DD" stroke="#107C10" strokeWidth="1.15" />
   </svg>
 );
 
-// On All Even Pages (2-4-6 overlapping pages)
 export const IconEvenPages246: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="1.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="3.2" y="7.2" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">2</text>
-    <rect x="4.8" y="4" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="6.5" y="9.8" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">4</text>
-    <rect x="8.2" y="6.5" width="6.5" height="8" fill="#ffffff" stroke="#334155" strokeWidth="0.9" />
-    <text x="9.9" y="12.3" fontSize="5.5" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">6</text>
+    <rect x="1.8" y="1.8" width="6.5" height="8" stroke="currentColor" strokeWidth="1" strokeDasharray="1.5 1.5" opacity="0.55" />
+    <rect x="4.8" y="3.8" width="6.5" height="8" fill="#EFE8FA" stroke="#8661C5" strokeWidth="1.15" />
+    <rect x="7.8" y="5.8" width="6.5" height="8" stroke="currentColor" strokeWidth="1" strokeDasharray="1.5 1.5" opacity="0.55" />
   </svg>
 );
 
-// Small dark gear badge helper inside SVGs
+// Windows 10 Crisp Cogwheel Mini Badge
 const GearBadge = () => (
   <g transform="translate(9.5, 9.5)">
-    <circle cx="3" cy="3" r="2.6" fill="#334155" />
-    <circle cx="3" cy="3" r="1" fill="#ffffff" />
-    <path d="M3 0 V0.8 M3 5.2 V6 M0 3 H0.8 M5.2 3 H6 M0.9 0.9 L1.5 1.5 M4.5 4.5 L5.1 5.1 M5.1 0.9 L4.5 1.5 M1.5 4.5 L0.9 5.1" stroke="#334155" strokeWidth="1" />
+    <path
+      d="M2.5 0H3.5L3.8 0.9L4.6 1.2L5.4 0.7L6 1.3L5.4 2.1L5.7 2.8L6.5 3V4L5.7 4.2L5.4 4.9L6 5.6L5.3 6.2L4.5 5.7L3.8 6L3.5 6.8H2.5L2.2 6L1.5 5.7L0.7 6.2L0 5.6L0.6 4.9L0.3 4.2L-0.5 4V3L0.3 2.8L0.6 2.1L0 1.3L0.6 0.7L1.4 1.2L2.2 0.9L2.5 0Z"
+      fill="#0078D4"
+      stroke="#FFFFFF"
+      strokeWidth="0.4"
+    />
+    <circle cx="3" cy="3.4" r="1.1" fill="#FFFFFF" />
   </g>
 );
 
-// Page Number Settings... (page with # + gear)
 export const IconPageNumberSettings: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9 L11.5 4.5 V13.5 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <text x="4" y="10.2" fontSize="7.2" fontWeight="700" fill="#1e293b" fontFamily="sans-serif">#</text>
+    <path d="M2.5 1.5H9L11.8 4.2V14H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M5.2 5.2L4.5 10.5M7.8 5.2L7.1 10.5M3.8 7H8.6M3.5 8.8H8.3" stroke="currentColor" strokeWidth="1.05" />
     <GearBadge />
   </svg>
 );
 
-// Switch Page Orientation (portrait + landscape swap arrow)
 export const IconSwitchOrientation: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.8" y="2" width="4.5" height="6.2" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <rect x="8.2" y="9.2" width="6.2" height="4.5" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <path d="M8 4.2 C10.8 4.2 11.8 5.6 11.8 7.5" stroke="#1e293b" strokeWidth="1.1" strokeLinecap="round" />
-    <path d="M10.4 6.6 L11.8 8 L13.1 6.6" stroke="#1e293b" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2" y="1.8" width="5" height="7.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="7" y="9" width="7.2" height="5" fill="#E6F2FA" stroke="#0078D4" strokeWidth="1.15" />
+    <path d="M9 3.5H12.5V6.8M11 5.3L12.5 6.8L14 5.3" stroke="#0078D4" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
-// Document Options... (clean blank page with dog-ear corner)
 export const IconDocOptions: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3 1.8 H10 L13 4.8 V14.2 H3 Z" fill="#ffffff" stroke="#334155" strokeWidth="1.1" />
-    <path d="M10 1.8 V4.8 H13" stroke="#334155" strokeWidth="1" fill="#e2e8f0" />
+    <path d="M2.5 1.5H9.5L13 5V14.5H2.5V1.5Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M9.5 1.5V5H13" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+    <path d="M4.5 7.5H10.5M4.5 10H9" stroke="#0078D4" strokeWidth="1" />
   </svg>
 );
 
-// Page Size... (page with diagonal size arrows + gear)
 export const IconPageSize: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9 L11.5 4.5 V13.5 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <path d="M4.2 10.5 L9.2 5.5 M6.8 5.5 H9.2 V7.9 M4.2 8.1 V10.5 H6.6" stroke="#1e293b" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2" y="1.8" width="9.5" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M4 11L9.5 5.5M6.8 5.5H9.5V8.2M4 8.2V11H6.8" stroke="#0078D4" strokeWidth="1.2" strokeLinecap="square" />
     <GearBadge />
   </svg>
 );
 
-// Page Layout... (page with folded corner / grid lines + gear)
 export const IconPageLayout: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9 L11.5 4.5 V13.5 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <rect x="4" y="4" width="3.5" height="7.5" stroke="#64748b" strokeWidth="0.8" fill="#f1f5f9" />
-    <line x1="8.5" y1="5.5" x2="10" y2="5.5" stroke="#64748b" strokeWidth="0.9" />
-    <line x1="8.5" y1="7.5" x2="10" y2="7.5" stroke="#64748b" strokeWidth="0.9" />
+    <rect x="2" y="1.8" width="9.5" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="3.5" y="3.8" width="3.2" height="7.5" fill="#E6F2FA" stroke="#0078D4" strokeWidth="0.9" />
+    <path d="M8 5.2H10M8 7.4H10" stroke="currentColor" strokeWidth="1" />
     <GearBadge />
   </svg>
 );
 
-// Page Background... (page with diagonal fill stripe + gear)
 export const IconPageBackground: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2.5 2 H9 L11.5 4.5 V13.5 H2.5 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <path d="M3.5 12.2 L10.5 5.2 M3.5 9.2 L7.8 4.9 M5.8 12.5 L10.5 7.8" stroke="#64748b" strokeWidth="1" />
+    <rect x="2" y="1.8" width="9.5" height="12" fill="#50E6FF" fillOpacity="0.35" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M3.5 11.2L9.5 5.2M3.5 8L6.8 4.8" stroke="#0078D4" strokeWidth="1" />
     <GearBadge />
   </svg>
 );
 
-// Border and Grommet... (overlapping border frame with corner/edge grommets)
 export const IconBorderGrommet: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 2 H8.5 L10.5 4 V11.5 H2 Z" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <rect x="5" y="5.5" width="9" height="8.5" fill="#e2e8f0" stroke="#1e293b" strokeWidth="1.1" />
-    <circle cx="6.8" cy="7.3" r="0.9" fill="#ffffff" stroke="#334155" strokeWidth="0.7" />
-    <circle cx="12.2" cy="7.3" r="0.9" fill="#ffffff" stroke="#334155" strokeWidth="0.7" />
-    <circle cx="6.8" cy="12.2" r="0.9" fill="#ffffff" stroke="#334155" strokeWidth="0.7" />
-    <circle cx="12.2" cy="12.2" r="0.9" fill="#ffffff" stroke="#334155" strokeWidth="0.7" />
+    <rect x="2" y="2" width="12" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.2" />
+    <circle cx="4.8" cy="4.8" r="1.1" fill="#0078D4" />
+    <circle cx="11.2" cy="4.8" r="1.1" fill="#0078D4" />
+    <circle cx="4.8" cy="11.2" r="1.1" fill="#0078D4" />
+    <circle cx="11.2" cy="11.2" r="1.1" fill="#0078D4" />
   </svg>
 );
 
 // Bitmap Menu Icons
 
-// Convert to Bitmap... (vector rectangle converting to checkerboard/pixel bitmap)
 export const IconConvertToBitmap: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="2" width="6.5" height="6.5" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <rect x="7.5" y="7" width="7" height="7" fill="#ffffff" stroke="#1e293b" strokeWidth="1" />
-    <rect x="7.5" y="7" width="3.5" height="3.5" fill="#3b82f6" />
-    <rect x="11" y="10.5" width="3.5" height="3.5" fill="#1e293b" />
-    <path d="M9.5 3.2 H13 V6" stroke="#16a34a" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="1.8" y="2" width="6.2" height="6.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <rect x="7.5" y="7.5" width="6.8" height="6.8" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" />
+    <rect x="7.5" y="7.5" width="3.4" height="3.4" fill="#0078D4" />
+    <rect x="10.9" y="10.9" width="3.4" height="3.4" fill="#605E5C" />
+    <path d="M10 3.2H13.2V6.4" stroke="#107C10" strokeWidth="1.4" strokeLinecap="square" />
   </svg>
 );
 
-// Straighten Image... (tilted image over aligned grid lines)
 export const IconStraightenImage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#0284c7" strokeWidth="1" strokeDasharray="1.8 1.4" />
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0284c7" strokeWidth="1" strokeDasharray="1.8 1.4" />
+    <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#0078D4" strokeWidth="1.1" strokeDasharray="2 1.5" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.1" strokeDasharray="2 1.5" />
     <rect
-      x="3.5"
-      y="4"
-      width="9"
-      height="8"
+      x="3.8"
+      y="4.2"
+      width="8.4"
+      height="7.6"
       transform="rotate(-10 8 8)"
-      fill="#ffffff"
+      fill="#FFFFFF"
       fillOpacity="0.85"
-      stroke="#1e293b"
-      strokeWidth="1.1"
+      stroke="currentColor"
+      strokeWidth="1.15"
     />
-    <path d="M5.5 10 L7.2 7.8 L8.8 9.4 L10.2 8.2 L11.5 10 Z" fill="#16a34a" opacity="0.7" />
   </svg>
 );
 
-// Image Adjustment Lab... (tonal color bars & lab sliders)
 export const IconImageAdjustmentLab: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="2" width="13" height="12" rx="1" fill="#ffffff" stroke="#334155" strokeWidth="1" />
-    <line x1="4.5" y1="4" x2="4.5" y2="12" stroke="#94a3b8" strokeWidth="1.1" strokeLinecap="round" />
-    <circle cx="4.5" cy="6.2" r="1.4" fill="#ef4444" />
-    <line x1="8" y1="4" x2="8" y2="12" stroke="#94a3b8" strokeWidth="1.1" strokeLinecap="round" />
-    <circle cx="8" cy="9.8" r="1.4" fill="#22c55e" />
-    <line x1="11.5" y1="4" x2="11.5" y2="12" stroke="#94a3b8" strokeWidth="1.1" strokeLinecap="round" />
-    <circle cx="11.5" cy="5.8" r="1.4" fill="#3b82f6" />
+    <rect x="1.8" y="2" width="12.4" height="12" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" />
+    <line x1="4.6" y1="4" x2="4.6" y2="12" stroke="#8A8886" strokeWidth="1.1" />
+    <rect x="3.4" y="5.5" width="2.4" height="2" fill="#E81123" />
+    <line x1="8" y1="4" x2="8" y2="12" stroke="#8A8886" strokeWidth="1.1" />
+    <rect x="6.8" y="8.8" width="2.4" height="2" fill="#107C10" />
+    <line x1="11.4" y1="4" x2="11.4" y2="12" stroke="#8A8886" strokeWidth="1.1" />
+    <rect x="10.2" y="5" width="2.4" height="2" fill="#0078D4" />
   </svg>
 );
 
-// CMYK Color Separation (4 plates: C, M, Y, K)
 export const IconCmykSeparation: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="1.5" y="1.5" width="6" height="6" rx="0.8" fill="#00aeef" stroke="#0284c7" strokeWidth="0.7" />
-    <rect x="8.5" y="1.5" width="6" height="6" rx="0.8" fill="#ec008c" stroke="#be185d" strokeWidth="0.7" />
-    <rect x="1.5" y="8.5" width="6" height="6" rx="0.8" fill="#fff200" stroke="#ca8a04" strokeWidth="0.7" />
-    <rect x="8.5" y="8.5" width="6" height="6" rx="0.8" fill="#1e293b" stroke="#0f172a" strokeWidth="0.7" />
+    <rect x="2" y="2" width="5.5" height="5.5" fill="#00BCF2" stroke="#0078D4" strokeWidth="0.6" />
+    <rect x="8.5" y="2" width="5.5" height="5.5" fill="#EC008C" />
+    <rect x="2" y="8.5" width="5.5" height="5.5" fill="#FFF100" stroke="#D29200" strokeWidth="0.6" />
+    <rect x="8.5" y="8.5" width="5.5" height="5.5" fill="#323130" />
   </svg>
 );
 
-// Text Menu Icons (Matches text_tab_ea200fa1.jpg)
+// Text Menu Icons
 
 export const IconTextTabs: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 3.5 H6 M4.5 2 L6.5 3.5 L4.5 5" stroke="#475569" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-    <line x1="2" y1="7" x2="14" y2="7" stroke="#64748b" strokeWidth="1" />
-    <line x1="5" y1="9.5" x2="14" y2="9.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="5" y1="12" x2="14" y2="12" stroke="#64748b" strokeWidth="1" />
+    <path d="M2 4H6.5M4.8 2.2L6.5 4L4.8 5.8" stroke="#0078D4" strokeWidth="1.4" strokeLinecap="square" />
+    <path d="M2 7.8H14M6 10.5H14M6 13.2H14" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
 export const IconTextColumns: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M2 3.5 H7 M2 6 H7 M2 8.5 H7 M2 11 H7 M2 13.5 H7" stroke="#64748b" strokeWidth="1" />
-    <path d="M9 3.5 H14 M9 6 H14 M9 8.5 H14 M9 11 H14 M9 13.5 H14" stroke="#64748b" strokeWidth="1" />
+    <path d="M2 3.5H6.8M2 6.5H6.8M2 9.5H6.8M2 12.5H6.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="square" />
+    <path d="M9.2 3.5H14M9.2 6.5H14M9.2 9.5H14M9.2 12.5H14" stroke="#0078D4" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
 export const IconBulletsNumbering: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="1.5" y="6" fontSize="5" fill="#475569" fontFamily="sans-serif">1</text>
-    <line x1="6" y1="4.5" x2="14" y2="4.5" stroke="#64748b" strokeWidth="1" />
-    <circle cx="3" cy="8.5" r="0.9" fill="#475569" />
-    <line x1="6" y1="8.5" x2="14" y2="8.5" stroke="#64748b" strokeWidth="1" />
-    <circle cx="3" cy="12.5" r="0.9" fill="#475569" />
-    <line x1="6" y1="12.5" x2="14" y2="12.5" stroke="#64748b" strokeWidth="1" />
+    <rect x="2" y="3.2" width="2" height="2" fill="#0078D4" />
+    <rect x="2" y="7" width="2" height="2" fill="#0078D4" />
+    <rect x="2" y="10.8" width="2" height="2" fill="#0078D4" />
+    <path d="M5.8 4.2H14M5.8 8H14M5.8 11.8H14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="square" />
   </svg>
 );
 
 export const IconDropCap: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="1.5" y="9" fontSize="8" fontWeight="600" fill="#475569" fontFamily="serif">A</text>
-    <line x1="8.5" y1="3.5" x2="14" y2="3.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="8.5" y1="6" x2="14" y2="6" stroke="#64748b" strokeWidth="1" />
-    <line x1="8.5" y1="8.5" x2="14" y2="8.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="2" y1="11.5" x2="14" y2="11.5" stroke="#64748b" strokeWidth="1" />
-    <line x1="2" y1="14" x2="14" y2="14" stroke="#64748b" strokeWidth="1" />
+    <path d="M2.2 9L4.6 3L7 9M3 7.2H6.2" stroke="#0078D4" strokeWidth="1.45" strokeLinecap="square" />
+    <path d="M9 4H14M9 6.8H14M2.2 11.5H14M2.2 13.8H11" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
 export const IconTextStatistics: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="2.2" y="8" fontSize="7.2" fill="#1e293b" fontFamily="sans-serif">ab</text>
-    <rect x="2" y="12" width="1.6" height="2" fill="#1e293b" />
-    <rect x="5" y="10.2" width="1.6" height="3.8" fill="#1e293b" />
-    <rect x="8" y="11.4" width="1.6" height="2.6" fill="#1e293b" />
-    <rect x="11" y="9.8" width="1.6" height="4.2" fill="#1e293b" />
+    <rect x="2.2" y="9.5" width="2" height="4" fill="#0078D4" />
+    <rect x="5.5" y="5.5" width="2" height="8" fill="#50E6FF" stroke="#0078D4" strokeWidth="0.6" />
+    <rect x="8.8" y="7.5" width="2" height="6" fill="#0078D4" />
+    <rect x="12" y="3" width="2" height="10.5" fill="#107C10" />
+    <path d="M1.5 13.8H14.5" stroke="currentColor" strokeWidth="1.15" />
   </svg>
 );
 
 export const IconEditText: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="2" y="10.5" fontSize="7.5" fill="#1e293b" fontFamily="sans-serif">ab</text>
-    <line x1="12" y1="3" x2="12" y2="13" stroke="#1e293b" strokeWidth="1.2" />
-    <path d="M10.5 3 H13.5 M10.5 13 H13.5" stroke="#1e293b" strokeWidth="1" />
+    <path d="M2.8 11.2L5 5L7.2 11.2M3.5 9.2H6.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M11.5 2.5V13.5M9.8 2.5H13.2M9.8 13.5H13.2" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
 export const IconConvertParagraphText: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="2" y="2.5" width="7" height="7" stroke="#475569" strokeWidth="0.9" strokeDasharray="1.5 1" />
-    <path d="M3.5 4.5 H7.5 M3.5 6.5 H7.5 M3.5 8.5 H6" stroke="#334155" strokeWidth="0.9" />
-    <text x="8.5" y="14" fontSize="7.5" fontWeight="600" fill="#1e293b" fontFamily="sans-serif">A</text>
-    <path d="M10.5 3.5 C12.5 3.5 13 5 13 6.8" stroke="#1e293b" strokeWidth="1" strokeLinecap="round" />
+    <rect x="1.8" y="2" width="7.2" height="7.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.1" strokeDasharray="1.8 1.2" />
+    <path d="M3.2 4.8H7.5M3.2 6.8H6.5" stroke="currentColor" strokeWidth="1" />
+    <path d="M9 13.8L11.2 8.2L13.4 13.8M9.7 12H12.7" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
 export const IconFitTextToPath: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="2" y1="13" x2="13" y2="3" stroke="#1e293b" strokeWidth="1.1" />
-    <rect x="1.5" y="11.5" width="2.2" height="2.2" fill="#ffffff" stroke="#1e293b" strokeWidth="0.9" />
-    <rect x="11.5" y="2" width="2.2" height="2.2" fill="#ffffff" stroke="#1e293b" strokeWidth="0.9" />
-    <text x="3.5" y="8" fontSize="6.5" fontWeight="600" fill="#1e293b" fontFamily="sans-serif">A</text>
+    <path d="M2.5 13C5 7 10 5 13.5 4" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M5 7L6.5 3L8 7M5.5 5.8H7.5" stroke="#0078D4" strokeWidth="1.3" strokeLinecap="square" />
+    <rect x="1.3" y="11.8" width="2.4" height="2.4" fill="#0078D4" />
+    <rect x="12.3" y="2.8" width="2.4" height="2.4" fill="#0078D4" />
   </svg>
 );
 
 export const IconStraightenText: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3.5 5.5 C5 2.5 11 2.5 12.5 5.5" stroke="#475569" strokeWidth="1" fill="none" />
-    <path d="M11 5.2 L12.8 5.8 L13 4" stroke="#475569" strokeWidth="0.9" strokeLinecap="round" />
-    <text x="2.2" y="12" fontSize="6.5" fill="#1e293b" fontFamily="sans-serif">a</text>
-    <text x="9.5" y="12" fontSize="6.5" fill="#1e293b" fontFamily="sans-serif">a</text>
+    <path d="M3 11.5L4.8 7L6.6 11.5M9.5 11.5L11.3 7L13.1 11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="square" />
+    <path d="M4 5C6 2.8 10 2.8 12 5" stroke="#0078D4" strokeWidth="1.25" />
+    <path d="M2 13.8H14" stroke="#0078D4" strokeWidth="1.35" />
   </svg>
 );
 
 export const IconAlignToBaseline: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="2" y="11.5" fontSize="8.5" fontWeight="600" fill="#1e293b" fontFamily="sans-serif">Aa</text>
-    <line x1="1.5" y1="13" x2="14.5" y2="13" stroke="#0284c7" strokeWidth="1.2" />
+    <path d="M3.2 10.5L5.8 4L8.4 10.5M4 8.5H7.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" />
+    <circle cx="11.5" cy="8.5" r="2" stroke="currentColor" strokeWidth="1.3" />
+    <line x1="1.8" y1="13" x2="14.2" y2="13" stroke="#0078D4" strokeWidth="1.5" />
   </svg>
 );
 
 export const IconChangeCase: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M3.5 5.5 C5.5 2.5 10.5 2.5 12.5 5.5" stroke="#475569" strokeWidth="1" fill="none" />
-    <path d="M11 5.2 L12.8 5.8 L13 4" stroke="#475569" strokeWidth="0.9" strokeLinecap="round" />
-    <text x="2" y="12.5" fontSize="6.5" fill="#1e293b" fontFamily="sans-serif">a</text>
-    <text x="8.5" y="12.5" fontSize="7.2" fontWeight="600" fill="#1e293b" fontFamily="sans-serif">A</text>
+    <circle cx="4.5" cy="10.2" r="2.1" stroke="currentColor" strokeWidth="1.3" />
+    <line x1="6.6" y1="8.2" x2="6.6" y2="12.3" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M9 12.2L11.2 6.5L13.4 12.2M9.6 10.5H12.8" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
+    <path d="M5 4.2C7 2.5 9.8 2.5 11.5 4.2" stroke="#0078D4" strokeWidth="1.25" />
   </svg>
 );
 
 export const IconEncodeText: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <text x="1.5" y="13" fontSize="7.2" fontWeight="600" fill="#1e293b" fontFamily="sans-serif">A</text>
-    <text x="6" y="7.5" fontSize="5.8" fontWeight="700" fill="#334155" fontFamily="monospace">&lt;/&gt;</text>
+    <path d="M5.5 4.2L2 8L5.5 11.8M10.5 4.2L14 8L10.5 11.8M8.8 3.2L7.2 12.8" stroke="#0078D4" strokeWidth="1.45" strokeLinecap="square" />
   </svg>
 );
 
-// Nudge Distance 4-way diamond/square icon (matching NuraDraw image_205e352e.png)
+// Nudge Distance
 export const IconNudgeDistance: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <rect x="6" y="6" width="4" height="4" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" />
-    {/* Top triangle */}
-    <path d="M8 1.2 L10.3 4.2 L5.7 4.2 Z" fill="#1e293b" />
-    {/* Bottom triangle */}
-    <path d="M8 14.8 L10.3 11.8 L5.7 11.8 Z" fill="#1e293b" />
-    {/* Left triangle */}
-    <path d="M1.2 8 L4.2 5.7 L4.2 10.3 Z" fill="#1e293b" />
-    {/* Right triangle */}
-    <path d="M14.8 8 L11.8 5.7 L11.8 10.3 Z" fill="#1e293b" />
+    <rect x="6" y="6" width="4" height="4" fill="#50E6FF" stroke="currentColor" strokeWidth="1.15" />
+    <path d="M8 1.5V4.2M8 11.8V14.5M1.5 8H4.2M11.8 8H14.5" stroke="currentColor" strokeWidth="1.25" />
+    <path d="M6.5 3L8 1.5L9.5 3M6.5 13L8 14.5L9.5 13M3 6.5L1.5 8L3 9.5M13 6.5L14.5 8L13 9.5" stroke="#0078D4" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
-// Autofit Page icon (matching NuraDraw image_387e6bbe.png)
+// Autofit Page
 export const IconAutofitPage: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    {/* Page rectangle with slight top-left corner dog-ear */}
-    <path d="M5.2 3.5 L12.5 3.5 L12.5 12.5 L3.5 12.5 L3.5 5.2 Z" fill="#ffffff" stroke="#1e293b" strokeWidth="1.2" strokeLinejoin="round" />
-    {/* Center solid circle dot */}
-    <circle cx="8" cy="8" r="1.9" fill="#1e293b" />
-    {/* Top-right diagonal arrow */}
-    <path d="M12.5 3.5 L15 1 M12.8 1 L15 1 L15 3.2" stroke="#1e293b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    {/* Bottom-left diagonal arrow */}
-    <path d="M3.5 12.5 L1 15 M3.2 15 L1 15 L1 12.8" stroke="#1e293b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="3.5" y="3.5" width="9" height="9" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.15" />
+    <rect x="6.8" y="6.8" width="2.4" height="2.4" fill="#0078D4" />
+    <path d="M11.5 4.5L14.5 1.5M12 1.5H14.5V4M4.5 11.5L1.5 14.5M4 14.5H1.5V12" stroke="#0078D4" strokeWidth="1.35" strokeLinecap="square" />
   </svg>
 );
 
-// Symmetry Tool Icons (Create, Edit, Finish, Remove, Break Link)
+// Symmetry Tool Icons
 export const IconSymmetryCreate: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
-    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
-    <circle cx="12.5" cy="3.5" r="2.5" fill="#16a34a" />
-    <path d="M12.5 2.2V4.8M11.2 3.5H13.8" stroke="#ffffff" strokeWidth="1.1" strokeLinecap="round" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.4" />
+    <path d="M6 4.2L2 8L6 11.8V4.2Z" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" strokeLinejoin="miter" />
+    <path d="M10 4.2L14 8L10 11.8V4.2Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" strokeLinejoin="miter" />
+    <rect x="10.2" y="1.2" width="4.8" height="4.8" rx="0.6" fill="#107C10" />
+    <path d="M12.6 2.2V5M11.2 3.6H14" stroke="#FFFFFF" strokeWidth="1.15" strokeLinecap="square" />
   </svg>
 );
 
 export const IconSymmetryEdit: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
-    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M10.5 13.5 L14 10 L15 11 L11.5 14.5 L10 14.8 Z" fill="#f59e0b" stroke="#92400e" strokeWidth="0.7" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.4" />
+    <path d="M6 4.2L2 8L6 11.8V4.2Z" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" strokeLinejoin="miter" />
+    <path d="M10 4.2L14 8L10 11.8V4.2Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" strokeLinejoin="miter" />
+    <path d="M10.5 13.5L13.8 10.2L14.8 11.2L11.5 14.5L10 14.8L10.5 13.5Z" fill="#FFC83D" stroke="#9C6500" strokeWidth="0.9" />
   </svg>
 );
 
 export const IconSymmetryFinish: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078d7" strokeWidth="1.2" strokeDasharray="2 1.2" />
-    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" strokeLinejoin="round" />
-    <circle cx="12.5" cy="12.5" r="2.7" fill="#16a34a" />
-    <path d="M11.2 12.5 L12.2 13.5 L14 11.5" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#0078D4" strokeWidth="1.2" strokeDasharray="2 1.4" />
+    <path d="M6 4.2L2 8L6 11.8V4.2Z" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" strokeLinejoin="miter" />
+    <path d="M10 4.2L14 8L10 11.8V4.2Z" fill="#FFFFFF" stroke="currentColor" strokeWidth="1" strokeLinejoin="miter" />
+    <rect x="9.8" y="9.8" width="5.2" height="5.2" rx="0.6" fill="#107C10" />
+    <path d="M11 12.4L12.1 13.5L14 11.2" stroke="#FFFFFF" strokeWidth="1.25" strokeLinecap="square" />
   </svg>
 );
 
 export const IconSymmetryRemove: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 1.2" />
-    <path d="M6.2 4.5 L2.5 8 L6.2 11.5 Z" fill="#334155" stroke="#1e293b" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M9.8 4.5 L13.5 8 L9.8 11.5 Z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="0.9" strokeDasharray="1.5 1" strokeLinejoin="round" />
-    <path d="M10.5 10.5 L14.5 14.5 M14.5 10.5 L10.5 14.5" stroke="#dc2626" strokeWidth="1.6" strokeLinecap="round" />
+    <line x1="8" y1="1.5" x2="8" y2="14.5" stroke="currentColor" strokeWidth="1.1" strokeDasharray="2 1.4" opacity="0.55" />
+    <path d="M6 4.2L2 8L6 11.8V4.2Z" fill="#E1DFDD" stroke="currentColor" strokeWidth="1" />
+    <path d="M10 4.2L14 8L10 11.8V4.2Z" stroke="currentColor" strokeWidth="1" strokeDasharray="1.5 1.2" opacity="0.55" />
+    <path d="M10.5 10.5L14.2 14.2M14.2 10.5L10.5 14.2" stroke="#E81123" strokeWidth="1.65" strokeLinecap="square" />
   </svg>
 );
 
 export const IconSymmetryBreak: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 16 16" className={className} fill="none">
-    <path d="M5.5 4.5 L2 8 L5.5 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M10.5 4.5 L14 8 L10.5 11.5 Z" fill="#0078d7" stroke="#0369a1" strokeWidth="0.9" strokeLinejoin="round" />
-    <path d="M7.5 2 L8.5 5.5 L7 8 L8.5 10.5 L7.5 14" stroke="#dc2626" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M5.5 4.2L1.8 8L5.5 11.8V4.2Z" fill="#50E6FF" stroke="#0078D4" strokeWidth="1" />
+    <path d="M10.5 4.2L14.2 8L10.5 11.8V4.2Z" fill="#FFFFFF" stroke="#0078D4" strokeWidth="1" />
+    <path d="M7.5 1.8L8.5 5.4L7 8L8.5 10.6L7.5 14.2" stroke="#E81123" strokeWidth="1.4" strokeLinecap="square" />
+  </svg>
+);
+
+// =============================================================================
+// Multi-Selection Shaping & Combine Icons (Matches Property Bar Reference)
+// =============================================================================
+
+export const IconShapeCombine: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path d="M2 2H9V5H5V9H2V2Z" fill="currentColor" />
+    <rect x="5.75" y="5.75" width="4.5" height="4.5" fill="currentColor" />
+    <path d="M11 7H14V14H7V11H11V7Z" fill="currentColor" />
+  </svg>
+);
+
+export const IconShapeWeld: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M2.5 2.5H9.5V6.5H13.5V13.5H6.5V9.5H2.5V2.5Z"
+      fill="#FFFFFF"
+      fillOpacity="0.85"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeTrim: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M2.5 9.5V2.5H9.5V6.5H6.5V9.5H2.5Z"
+      fill="#FFFFFF"
+      fillOpacity="0.85"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+    <rect
+      x="6.5"
+      y="6.5"
+      width="7"
+      height="7"
+      fill="#FFFFFF"
+      fillOpacity="0.85"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeIntersect: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <rect
+      x="2.5"
+      y="2.5"
+      width="7"
+      height="7"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+    <rect
+      x="6.5"
+      y="6.5"
+      width="7"
+      height="7"
+      stroke="currentColor"
+      strokeWidth="1.15"
+      strokeDasharray="1.5 1.3"
+      strokeLinejoin="miter"
+    />
+    <rect
+      x="6.5"
+      y="6.5"
+      width="3"
+      height="3"
+      fill="#FFFFFF"
+      fillOpacity="0.9"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeSimplify: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <rect
+      x="2.5"
+      y="2.5"
+      width="7"
+      height="7"
+      fill="#FFFFFF"
+      fillOpacity="0.85"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+    <path
+      d="M6.5 9.5V6.5H9.5"
+      stroke="currentColor"
+      strokeWidth="1.15"
+      strokeDasharray="1.5 1.3"
+      strokeLinejoin="miter"
+    />
+    <path
+      d="M9.5 6.5H13.5V13.5H6.5V9.5"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeFrontMinusBack: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <rect
+      x="2.5"
+      y="2.5"
+      width="7"
+      height="7"
+      stroke="currentColor"
+      strokeWidth="1.15"
+      strokeDasharray="1.5 1.3"
+      strokeLinejoin="miter"
+    />
+    <path
+      d="M9.5 6.5H13.5V13.5H6.5V9.5"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeBackMinusFront: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M2.5 9.5V2.5H9.5V6.5"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinejoin="miter"
+    />
+    <rect
+      x="6.5"
+      y="6.5"
+      width="7"
+      height="7"
+      stroke="currentColor"
+      strokeWidth="1.15"
+      strokeDasharray="1.5 1.3"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
+export const IconShapeBoundary: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none">
+    <path
+      d="M2.5 2.5H9.5V6.5H13.5V13.5H6.5V9.5H2.5V2.5Z"
+      fill="#FFFFFF"
+      fillOpacity="0.85"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="miter"
+    />
+    <rect
+      x="8.2"
+      y="8.2"
+      width="3.3"
+      height="3.3"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="0.6"
+    />
   </svg>
 );
 

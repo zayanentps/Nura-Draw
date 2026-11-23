@@ -81,20 +81,23 @@ import {
   extendOpenCurveToPoint,
   convertObjectToCurves,
   deleteSegmentFromPath,
+  finalizePathMutation,
+  sceneToPathCoord,
 } from '../utils/curveEngine';
 import { socketService } from '../services/socketService';
 import { TopRuler, LeftRuler } from './Rulers';
 import { NuraContextMenu } from './NuraContextMenu';
+import type { ShapeOperation } from '../utils/shapingEngine';
 
 const EYEDROPPER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 4.5a2.12 2.12 0 0 1 0 3l-2.1 2.1 1.1 1.1-1.4 1.4-1.5-1.5-7.4 7.4c-.4.4-.9.7-1.4.8l-3 .7.7-3c.1-.5.4-1 .8-1.4l7.4-7.4-1.5-1.5 1.4-1.4 1.1 1.1 2.1-2.1a2.12 2.12 0 0 1 3 0Z" fill="#ffffff" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 7.5 16.5 10.5" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(EYEDROPPER_SVG)}") 2 21, crosshair`;
 
 const HAIRLINE_THRESHOLD_PT = 0.25;
-const HAIRLINE_MAX_SCREEN_PX = 0.6;
+const HAIRLINE_SCREEN_PX = 1.0;
 
 function clampHairlineCtxLineWidth(instance: any, ctx: CanvasRenderingContext2D, rawSw: any) {
   const sw = Number(rawSw);
-  if (!Number.isFinite(sw) || sw <= 0 || sw > HAIRLINE_THRESHOLD_PT) return;
+  if (!Number.isFinite(sw) || sw <= 0) return;
   const dpr =
     typeof instance?.getCanvasRetinaScaling === 'function'
       ? Math.max(1, instance.getCanvasRetinaScaling())
@@ -102,8 +105,16 @@ function clampHairlineCtxLineWidth(instance: any, ctx: CanvasRenderingContext2D,
   const m = ctx.getTransform();
   const sx = Math.hypot(m.a, m.b) / dpr;
   const sy = Math.hypot(m.c, m.d) / dpr;
-  const screenScale = Math.max(0.001, (sx + sy) / 2);
-  ctx.lineWidth = Math.min(sw, HAIRLINE_MAX_SCREEN_PX / screenScale);
+  const screenScale = Math.max(0.0001, (sx + sy) / 2);
+  const targetScreenPx = dpr >= 2 ? 0.9 : HAIRLINE_SCREEN_PX;
+
+  if (sw <= HAIRLINE_THRESHOLD_PT) {
+    // True vector hairline: constant ~1 screen px whether zoomed in (1600%) or zoomed out (5%)
+    ctx.lineWidth = targetScreenPx / screenScale;
+  } else if (sw * screenScale < 0.75) {
+    // Prevent non-hairline thin outlines from disappearing on heavy zoom-out
+    ctx.lineWidth = 0.75 / screenScale;
+  }
 }
 
 function installHairlineRenderPatch() {
@@ -139,7 +150,12 @@ function installHairlineRenderPatch() {
         const bw = Number(this.width);
         if (Number.isFinite(bw) && bw > 0 && bw <= HAIRLINE_THRESHOLD_PT) {
           const zoom = Math.max(0.01, this.canvas?.getZoom?.() || 1);
-          ctx.lineWidth = Math.min(bw, HAIRLINE_MAX_SCREEN_PX / zoom);
+          const dpr =
+            typeof this.canvas?.getRetinaScaling === 'function'
+              ? Math.max(1, this.canvas.getRetinaScaling())
+              : 1;
+          const targetScreenPx = dpr >= 2 ? 0.9 : HAIRLINE_SCREEN_PX;
+          ctx.lineWidth = targetScreenPx / zoom;
         }
       };
       brushProto.__hairlineBrushPatched = true;
@@ -608,6 +624,242 @@ function buildBSplinePathD(
   return d;
 }
 
+interface OpenPathEndpointSnap {
+  x: number;
+  y: number;
+  pathObj: fabric.Path | null;
+  endRole: 'start' | 'end';
+  otherEnd: { x: number; y: number } | null;
+  label: string;
+}
+
+function getPathSubpathEndpoints(pathObj: fabric.Path): {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  isClosed: boolean;
+} | null {
+  const cmds = pathObj.path as any[][];
+  if (!Array.isArray(cmds) || cmds.length < 2) return null;
+  const offset = pathObj.pathOffset || { x: 0, y: 0 };
+  const matrix = pathObj.calcTransformMatrix();
+  const toWorld = (px: number, py: number) =>
+    fabric.util.transformPoint(new fabric.Point(px - offset.x, py - offset.y), matrix);
+
+  let startLocal: { x: number; y: number } | null = null;
+  let endLocal: { x: number; y: number } | null = null;
+  let hasZ = false;
+
+  for (const cmd of cmds) {
+    const op = String(cmd[0]).toUpperCase();
+    if (op === 'M' && cmd.length >= 3) {
+      startLocal = { x: Number(cmd[1]), y: Number(cmd[2]) };
+      endLocal = { ...startLocal };
+      hasZ = false;
+    } else if (op === 'L' && cmd.length >= 3) {
+      endLocal = { x: Number(cmd[1]), y: Number(cmd[2]) };
+    } else if (op === 'Q' && cmd.length >= 5) {
+      endLocal = { x: Number(cmd[3]), y: Number(cmd[4]) };
+    } else if (op === 'C' && cmd.length >= 7) {
+      endLocal = { x: Number(cmd[5]), y: Number(cmd[6]) };
+    } else if (op === 'Z') {
+      hasZ = true;
+    }
+  }
+
+  if (!startLocal || !endLocal) return null;
+  const wStart = toWorld(startLocal.x, startLocal.y);
+  const wEnd = toWorld(endLocal.x, endLocal.y);
+  const isClosed = hasZ || Math.hypot(wStart.x - wEnd.x, wStart.y - wEnd.y) < 0.75;
+  return {
+    start: { x: wStart.x, y: wStart.y },
+    end: { x: wEnd.x, y: wEnd.y },
+    isClosed,
+  };
+}
+
+function findNearestFreehandEndpoint(
+  x: number,
+  y: number,
+  objects: fabric.FabricObject[],
+  tol: number
+): OpenPathEndpointSnap | null {
+  let best: { snap: OpenPathEndpointSnap; dist: number } | null = null;
+
+  for (const obj of objects) {
+    if (!obj || obj.visible === false || (obj as any).isGuideline || (obj as any).isDimension) continue;
+
+    if (obj.type === 'path') {
+      const pObj = obj as fabric.Path;
+      const ends = getPathSubpathEndpoints(pObj);
+      if (!ends || ends.isClosed) continue;
+      const dStart = Math.hypot(ends.start.x - x, ends.start.y - y);
+      if (dStart <= tol && (!best || dStart < best.dist)) {
+        best = {
+          dist: dStart,
+          snap: {
+            x: ends.start.x,
+            y: ends.start.y,
+            pathObj: pObj,
+            endRole: 'start',
+            otherEnd: ends.end,
+            label: 'Endpoint',
+          },
+        };
+      }
+      const dEnd = Math.hypot(ends.end.x - x, ends.end.y - y);
+      if (dEnd <= tol && (!best || dEnd < best.dist)) {
+        best = {
+          dist: dEnd,
+          snap: {
+            x: ends.end.x,
+            y: ends.end.y,
+            pathObj: pObj,
+            endRole: 'end',
+            otherEnd: ends.start,
+            label: 'Endpoint',
+          },
+        };
+      }
+    } else if (obj.type === 'line') {
+      const lp = (obj as fabric.Line).calcLinePoints();
+      const matrix = obj.calcTransformMatrix();
+      const p1 = fabric.util.transformPoint(new fabric.Point(lp.x1, lp.y1), matrix);
+      const p2 = fabric.util.transformPoint(new fabric.Point(lp.x2, lp.y2), matrix);
+      const d1 = Math.hypot(p1.x - x, p1.y - y);
+      if (d1 <= tol && (!best || d1 < best.dist)) {
+        best = {
+          dist: d1,
+          snap: {
+            x: p1.x,
+            y: p1.y,
+            pathObj: null,
+            endRole: 'start',
+            otherEnd: { x: p2.x, y: p2.y },
+            label: 'Endpoint',
+          },
+        };
+      }
+      const d2 = Math.hypot(p2.x - x, p2.y - y);
+      if (d2 <= tol && (!best || d2 < best.dist)) {
+        best = {
+          dist: d2,
+          snap: {
+            x: p2.x,
+            y: p2.y,
+            pathObj: null,
+            endRole: 'end',
+            otherEnd: { x: p1.x, y: p1.y },
+            label: 'Endpoint',
+          },
+        };
+      }
+    }
+  }
+
+  return best ? best.snap : null;
+}
+
+function perpDistanceToSegment(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number }
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-9) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+function simplifyPointsRDP(
+  pts: { x: number; y: number }[],
+  epsilon: number
+): { x: number; y: number }[] {
+  if (pts.length <= 2) return pts.map((p) => ({ ...p }));
+  let maxDist = 0;
+  let splitIdx = 0;
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = perpDistanceToSegment(pts[i], first, last);
+    if (d > maxDist) {
+      maxDist = d;
+      splitIdx = i;
+    }
+  }
+  if (maxDist > epsilon) {
+    const left = simplifyPointsRDP(pts.slice(0, splitIdx + 1), epsilon);
+    const right = simplifyPointsRDP(pts.slice(splitIdx), epsilon);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [{ ...first }, { ...last }];
+}
+
+function clampHandleVector(
+  hx: number,
+  hy: number,
+  segLen: number
+): { x: number; y: number } {
+  const hLen = Math.hypot(hx, hy);
+  const maxLen = segLen * 0.42;
+  if (hLen > maxLen && hLen > 1e-6) {
+    const scale = maxLen / hLen;
+    return { x: hx * scale, y: hy * scale };
+  }
+  return { x: hx, y: hy };
+}
+
+function buildFreehandCubicCommands(
+  pts: { x: number; y: number }[],
+  closed: boolean
+): any[][] {
+  const n = pts.length;
+  if (n === 0) return [];
+  if (n === 1) return [['M', pts[0].x, pts[0].y]];
+  if (n === 2) {
+    const cmds: any[][] = [
+      ['M', pts[0].x, pts[0].y],
+      ['L', pts[1].x, pts[1].y],
+    ];
+    if (closed) cmds.push(['Z']);
+    return cmds;
+  }
+
+  const cmds: any[][] = [['M', pts[0].x, pts[0].y]];
+  const segCount = closed ? n : n - 1;
+
+  for (let i = 0; i < segCount; i++) {
+    const p0 = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = closed ? pts[(i + 1) % n] : pts[i + 1];
+    const p3 = closed ? pts[(i + 2) % n] : pts[Math.min(n - 1, i + 2)];
+
+    const segLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const h1 = clampHandleVector((p2.x - p0.x) / 6, (p2.y - p0.y) / 6, segLen);
+    const h2 = clampHandleVector((p3.x - p1.x) / 6, (p3.y - p1.y) / 6, segLen);
+
+    cmds.push([
+      'C',
+      Number((p1.x + h1.x).toFixed(2)),
+      Number((p1.y + h1.y).toFixed(2)),
+      Number((p2.x - h2.x).toFixed(2)),
+      Number((p2.y - h2.y).toFixed(2)),
+      Number(p2.x.toFixed(2)),
+      Number(p2.y.toFixed(2)),
+    ]);
+  }
+
+  if (closed) {
+    cmds.push(['Z']);
+  }
+  return cmds;
+}
+
+function commandsToSvgD(cmds: any[][]): string {
+  return cmds.map((c) => c.join(' ')).join(' ');
+}
+
 interface NuraCanvasProps {
   activeTool: ToolType;
   onSelectTool: (tool: ToolType) => void;
@@ -665,6 +917,7 @@ interface NuraCanvasProps {
   onConvertToCurves?: () => void;
   onBringIntoFocus?: () => void;
   onBreakApart?: () => void;
+  onShapeOperation?: (op: ShapeOperation) => void;
   onToggleHide?: () => void;
   onToggleLock?: () => void;
   onOpenProperties?: () => void;
@@ -770,6 +1023,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   onConvertToCurves,
   onBringIntoFocus,
   onBreakApart,
+  onShapeOperation,
   onToggleHide,
   onToggleLock,
   onOpenProperties,
@@ -851,12 +1105,22 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   dimensionConfigRef.current = dimensionConfig;
   const zoomLevelRef = useRef<number>(zoomLevel);
   zoomLevelRef.current = zoomLevel;
+  const panRef = useRef<{ x: number; y: number }>(pan);
+  panRef.current = pan;
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
   const activeToolRef = useRef<ToolType>(activeTool);
   activeToolRef.current = activeTool;
   const smartFillConfigRef = useRef<SmartFillConfig | undefined>(smartFillConfig);
   smartFillConfigRef.current = smartFillConfig;
   const onNotifyToastRef = useRef(onNotifyToast);
   onNotifyToastRef.current = onNotifyToast;
+  const currentFillRef = useRef<string>(currentFill);
+  currentFillRef.current = currentFill;
+  const currentStrokeRef = useRef<string>(currentStroke);
+  currentStrokeRef.current = currentStroke;
+  const propertiesRef = useRef<PropertyState>(properties);
+  propertiesRef.current = properties;
   const shiftKeyRef = useRef<boolean>(false);
 
   // Real-time loop prevention flag
@@ -901,6 +1165,23 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     nodes: { x: number; y: number; inX?: number; inY?: number; outX?: number; outY?: number }[];
     cursorPt: { x: number; y: number } | null;
     closeHighlight: boolean;
+  } | null>(null);
+
+  // Freehand interactive vector stroke with endpoint snapping & loop closing
+  const freehandDrawRef = useRef<{
+    points: { x: number; y: number }[];
+    totalLen: number;
+    closeToStart: boolean;
+    closeExistingPath: boolean;
+    snappedEndPt: { x: number; y: number } | null;
+    startSnap: OpenPathEndpointSnap | null;
+    endSnap: OpenPathEndpointSnap | null;
+  } | null>(null);
+  const [freehandPreview, setFreehandPreview] = useState<{
+    points: { x: number; y: number }[];
+    closeToStart: boolean;
+    closeExistingPath: boolean;
+    snapTarget: { x: number; y: number; label: string } | null;
   } | null>(null);
 
   // 3-Point Curve state & live SVG overlay
@@ -1058,6 +1339,14 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     hoverHandleKey: string | null;
   } | null>(null);
   const [curveMarquee, setCurveMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [zoomMarquee, setZoomMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const zoomDragRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    startScreenX: number;
+    startScreenY: number;
+    isDragging: boolean;
+  } | null>(null);
   const [addNodeHoverPreview, setAddNodeHoverPreview] = useState<{
     point: { x: number; y: number };
     extendFrom?: { x: number; y: number };
@@ -1159,6 +1448,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       selectionDashArray: [3, 3],
       selectionFullyContained: false,
       preserveObjectStacking: true,
+      targetFindTolerance: 6,
     });
 
     fabricRef.current = canvas;
@@ -1323,8 +1613,23 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     canvas.on('path:created', (e: any) => {
       if (e?.path) {
         e.path.set({ strokeUniform: true });
+        disableObjectCaching(e.path);
+        ensureObjectId(e.path, 'Artistic Brush');
         e.path.setCoords();
+        canvas.setActiveObject(e.path);
+        onSelectionChange(e.path);
         canvas.requestRenderAll();
+      }
+    });
+    canvas.on('text:editing:exited', (e: any) => {
+      const target = e?.target;
+      if (target) {
+        target.setCoords();
+        canvas.setActiveObject(target);
+        onSelectionChange(target);
+        canvas.requestRenderAll();
+        onCanvasModified?.();
+        socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
       }
     });
 
@@ -1523,11 +1828,20 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     if (!canvas) return;
 
     if (!['bezier', 'pen', 'b_spline', 'polyline'].includes(activeTool)) {
+      const unfinishedCurve = bezierPreviewRef.current;
       bezierNodesRef.current = [];
       isDraggingBezierHandleRef.current = false;
       bezierPreviewRef.current = null;
       setBezierPenPreview(null);
       setBezierRubberBand(null);
+      if (unfinishedCurve && (activeTool === 'pick' || activeTool === 'freehand_pick' || activeTool === 'shape')) {
+        (unfinishedCurve as any).isCurve = true;
+        unfinishedCurve.set({ selectable: true, evented: true });
+        unfinishedCurve.setCoords();
+        canvas.setActiveObject(unfinishedCurve);
+        onSelectionChange(unfinishedCurve);
+        onCanvasModified?.();
+      }
     }
     if (activeTool !== 'curve_3p') {
       curve3pStepRef.current = null;
@@ -1536,6 +1850,10 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     if (activeTool !== 'line2p') {
       line2pStartRef.current = null;
       setLine2pPreview(null);
+    }
+    if (activeTool !== 'freehand') {
+      freehandDrawRef.current = null;
+      setFreehandPreview(null);
     }
 
     if (!['dimension', 'hv_dimension', 'segment_dimension'].includes(activeTool)) {
@@ -1571,14 +1889,9 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       commitAndCloseTransparencyPopup(false);
     }
 
-    canvas.isDrawingMode = activeTool === 'freehand' || activeTool === 'artistic_media';
+    canvas.isDrawingMode = activeTool === 'artistic_media';
 
-    if (activeTool === 'freehand') {
-      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentStroke || '#000000';
-      canvas.freeDrawingBrush.width =
-        properties.strokeWidth && properties.strokeWidth > 0 ? properties.strokeWidth : 0.25;
-    } else if (activeTool === 'artistic_media') {
+    if (activeTool === 'artistic_media') {
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
       canvas.freeDrawingBrush.color = currentStroke || '#1e293b';
       canvas.freeDrawingBrush.width = Math.max(
@@ -1608,9 +1921,16 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       });
     };
 
+    zoomDragRef.current = null;
+    setZoomMarquee(null);
+
     canvas.hoverCursor =
       activeTool === 'eyedropper'
         ? EYEDROPPER_CURSOR
+        : activeTool === 'zoom'
+        ? 'zoom-in'
+        : activeTool === 'pan'
+        ? 'grab'
         : activeTool === 'pick' || activeTool === 'freehand_pick'
         ? 'move'
         : 'crosshair';
@@ -1626,6 +1946,17 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         restoreLockState(obj);
         obj.setCoords();
       });
+      const curSelected = canvas.getActiveObject() as any;
+      if (curSelected) {
+        if (curSelected.isEditing && typeof curSelected.exitEditing === 'function') {
+          curSelected.exitEditing();
+        }
+        curSelected.set({ selectable: true, evented: true });
+        restoreLockState(curSelected);
+        curSelected.setCoords();
+        canvas.setActiveObject(curSelected);
+        onSelectionChange(curSelected);
+      }
       canvas.requestRenderAll();
     } else if (activeTool === 'shape') {
       canvas.selection = false;
@@ -2030,24 +2361,8 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
-      // Zoom tool click (Left click = zoom in at cursor, Alt/Right click = zoom out at cursor)
+      // Zoom tool interactions (left click, right click zoom back, drag window) are handled cleanly in capture-phase / window handlers
       if (activeTool === 'zoom') {
-        const desk = deskRef.current;
-        const rect = desk ? desk.getBoundingClientRect() : { left: 0, top: 0 };
-        const screenX = evt.clientX - rect.left;
-        const screenY = evt.clientY - rect.top;
-
-        const sceneX = (screenX - pan.x) / zoomLevel;
-        const sceneY = (screenY - pan.y) / zoomLevel;
-
-        const factor = evt.altKey || evt.button === 2 ? 0.5 : 2;
-        const newZoom = Math.min(4096, Math.max(0.01, Number((zoomLevel * factor).toFixed(4))));
-
-        const newPanX = screenX - sceneX * newZoom;
-        const newPanY = screenY - sceneY * newZoom;
-
-        setPan({ x: Math.round(newPanX), y: Math.round(newPanY) });
-        onZoomChange(newZoom);
         return;
       }
 
@@ -2268,8 +2583,31 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
-      // Artistic Text Tool click (with OSNAP start point)
+      // Artistic Text Tool click (stay in Text tool while typing; click existing text to edit; selecting Pick tool finishes & selects object)
       if (activeTool === 'text') {
+        const curActive = canvas.getActiveObject() as any;
+        if (curActive && curActive.isEditing) {
+          if (typeof curActive.exitEditing === 'function') {
+            curActive.exitEditing();
+          }
+          curActive.setCoords();
+          canvas.setActiveObject(curActive);
+          onSelectionChange(curActive);
+          canvas.requestRenderAll();
+          return;
+        }
+
+        const hitTarget = resolveEventTarget(canvas, evt, opt);
+        if (hitTarget && (hitTarget.type === 'i-text' || hitTarget.type === 'text')) {
+          canvas.setActiveObject(hitTarget);
+          if (typeof (hitTarget as any).enterEditing === 'function') {
+            (hitTarget as any).enterEditing();
+          }
+          onSelectionChange(hitTarget);
+          canvas.requestRenderAll();
+          return;
+        }
+
         const startPt = resolveSnappedPoint(pointer);
         const iText = new fabric.IText('Vector Text', {
           left: startPt.x,
@@ -2297,8 +2635,10 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         canvas.add(iText);
         canvas.setActiveObject(iText);
         iText.enterEditing();
+        iText.selectAll();
+        onSelectionChange(iText);
         canvas.renderAll();
-        onSelectTool('pick');
+        onCanvasModified?.();
         socketService.sendCanvasUpdate(canvas.toJSON(), 'add');
         return;
       }
@@ -2361,6 +2701,73 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           socketService.sendCanvasUpdate(canvas.toJSON(), 'add');
           return;
         }
+      }
+
+      // Freehand Drawing Tool (F5): Snaps start & end points to endpoints and closes loops into filled vector paths
+      if (activeTool === 'freehand') {
+        if (evt.button !== 0) return;
+        canvas.discardActiveObject();
+        onSelectionChange(null);
+
+        const endpointTol = Math.min(22, Math.max(5, 13 / curZoom));
+        const openEndSnap = findNearestFreehandEndpoint(
+          pointer.x,
+          pointer.y,
+          canvas.getObjects(),
+          endpointTol
+        );
+        const osnap =
+          !openEndSnap && currentSnap?.enabled
+            ? findNearestOsnapPoint(
+                pointer.x,
+                pointer.y,
+                canvas.getObjects(),
+                null,
+                pageConfigRef.current,
+                currentSnap,
+                curZoom
+              )
+            : null;
+
+        const startPt = openEndSnap
+          ? { x: openEndSnap.x, y: openEndSnap.y }
+          : osnap
+          ? { x: osnap.x, y: osnap.y }
+          : { x: pointer.x, y: pointer.y };
+
+        freehandDrawRef.current = {
+          points: [startPt],
+          totalLen: 0,
+          closeToStart: false,
+          closeExistingPath: false,
+          snappedEndPt: null,
+          startSnap: openEndSnap,
+          endSnap: null,
+        };
+        setFreehandPreview({
+          points: [startPt],
+          closeToStart: false,
+          closeExistingPath: false,
+          snapTarget: openEndSnap
+            ? { x: startPt.x, y: startPt.y, label: openEndSnap.label }
+            : osnap
+            ? { x: startPt.x, y: startPt.y, label: osnap.label }
+            : null,
+        });
+        if (openEndSnap || osnap) {
+          setActiveSnapMarkers([
+            {
+              id: `fh-start-snap-${Math.round(startPt.x)}-${Math.round(startPt.y)}`,
+              x: startPt.x,
+              y: startPt.y,
+              type: openEndSnap ? 'node' : osnap!.type,
+              label: openEndSnap ? openEndSnap.label : osnap!.label,
+            },
+          ]);
+        } else {
+          setActiveSnapMarkers([]);
+        }
+        return;
       }
 
       // Interactive Bezier, Pen, B-Spline & Polyline Tools
@@ -2528,8 +2935,8 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
-      // Shape drawing tools (Rectangle, Ellipse, Polygon, Star, 3-Point variants) with OSNAP start point
-      if (['rectangle', 'ellipse', 'polygon', 'star', 'rect3p', 'ellipse3p'].includes(activeTool)) {
+      // Shape drawing tools (Rectangle, Ellipse, Polygon, Star, 3-Point Ellipse) with OSNAP start point
+      if (['rectangle', 'ellipse', 'polygon', 'star', 'ellipse3p'].includes(activeTool)) {
         const startPt = resolveSnappedPoint(pointer);
         isDrawingShapeRef.current = true;
         shapeStartRef.current = startPt;
@@ -2538,7 +2945,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         let newShape: fabric.FabricObject;
         const sw = properties.strokeWidth ?? 0.25;
 
-        if (activeTool === 'rectangle' || activeTool === 'rect3p') {
+        if (activeTool === 'rectangle') {
           newShape = new fabric.Rect({
             left: startPt.x - sw / 2,
             top: startPt.y - sw / 2,
@@ -3468,6 +3875,185 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
+      // Freehand live vector stroke + magnetic start-loop & endpoint snap
+      if (activeTool === 'freehand' && freehandDrawRef.current && evt.buttons === 1) {
+        const st = freehandDrawRef.current;
+        const pts = st.points;
+        const startPt = pts[0];
+        const prevPt = pts[pts.length - 1];
+        const minSampleDist = Math.max(0.75, 2 / curZoom);
+        const stepDist = Math.hypot(pointer.x - prevPt.x, pointer.y - prevPt.y);
+
+        if (stepDist >= minSampleDist) {
+          pts.push({ x: pointer.x, y: pointer.y });
+          st.totalLen += stepDist;
+        }
+
+        const closeTol = Math.min(26, Math.max(8, 15 / curZoom));
+        const minCloseStrokeLen = Math.max(12, 22 / curZoom);
+        const distToStart = Math.hypot(pointer.x - startPt.x, pointer.y - startPt.y);
+
+        setHoverSnapMarker(null);
+
+        if (st.totalLen >= minCloseStrokeLen && pts.length >= 5 && distToStart <= closeTol) {
+          st.closeToStart = true;
+          st.closeExistingPath = false;
+          st.snappedEndPt = { x: startPt.x, y: startPt.y };
+          st.endSnap = null;
+          setActiveSnapMarkers([
+            {
+              id: `fh-close-loop-${Math.round(startPt.x)}-${Math.round(startPt.y)}`,
+              x: startPt.x,
+              y: startPt.y,
+              type: 'node',
+              label: 'Close Path',
+            },
+          ]);
+          setFreehandPreview({
+            points: [...pts, { x: startPt.x, y: startPt.y }],
+            closeToStart: true,
+            closeExistingPath: false,
+            snapTarget: { x: startPt.x, y: startPt.y, label: 'Close Path' },
+          });
+          setCadHud({
+            x: startPt.x,
+            y: startPt.y,
+            text: 'Close Path — Release to close object',
+          });
+          return;
+        }
+
+        st.closeToStart = false;
+
+        // Check closing onto opposite open endpoint of the same path where stroke started
+        const openSnapTol = Math.min(24, Math.max(6, 14 / curZoom));
+        if (
+          st.startSnap?.pathObj &&
+          st.startSnap.otherEnd &&
+          st.totalLen >= 10 / curZoom &&
+          Math.hypot(pointer.x - st.startSnap.otherEnd.x, pointer.y - st.startSnap.otherEnd.y) <= openSnapTol
+        ) {
+          const targetPt = st.startSnap.otherEnd;
+          st.closeExistingPath = true;
+          st.snappedEndPt = { x: targetPt.x, y: targetPt.y };
+          st.endSnap = {
+            x: targetPt.x,
+            y: targetPt.y,
+            pathObj: st.startSnap.pathObj,
+            endRole: st.startSnap.endRole === 'start' ? 'end' : 'start',
+            otherEnd: startPt,
+            label: 'Close Path',
+          };
+          setActiveSnapMarkers([
+            {
+              id: `fh-close-existing-${Math.round(targetPt.x)}-${Math.round(targetPt.y)}`,
+              x: targetPt.x,
+              y: targetPt.y,
+              type: 'node',
+              label: 'Close Path',
+            },
+          ]);
+          setFreehandPreview({
+            points: [...pts, targetPt],
+            closeToStart: false,
+            closeExistingPath: true,
+            snapTarget: { x: targetPt.x, y: targetPt.y, label: 'Close Path' },
+          });
+          setCadHud({
+            x: targetPt.x,
+            y: targetPt.y,
+            text: 'Close Curve — Release to close path',
+          });
+          return;
+        }
+
+        st.closeExistingPath = false;
+
+        // Check snapping end of freehand stroke to any existing endpoint / OSNAP point
+        const endEndpoint =
+          st.totalLen >= 8 / curZoom
+            ? findNearestFreehandEndpoint(pointer.x, pointer.y, canvas.getObjects(), openSnapTol)
+            : null;
+        const endOsnap =
+          !endEndpoint && st.totalLen >= 8 / curZoom && currentSnap?.enabled
+            ? findNearestOsnapPoint(
+                pointer.x,
+                pointer.y,
+                canvas.getObjects(),
+                null,
+                pageConfigRef.current,
+                currentSnap,
+                curZoom
+              )
+            : null;
+
+        if (endEndpoint) {
+          const pt = { x: endEndpoint.x, y: endEndpoint.y };
+          st.snappedEndPt = pt;
+          st.endSnap = endEndpoint;
+          setActiveSnapMarkers([
+            {
+              id: `fh-end-ep-${Math.round(pt.x)}-${Math.round(pt.y)}`,
+              x: pt.x,
+              y: pt.y,
+              type: 'node',
+              label: endEndpoint.label,
+            },
+          ]);
+          setFreehandPreview({
+            points: [...pts, pt],
+            closeToStart: false,
+            closeExistingPath: false,
+            snapTarget: { x: pt.x, y: pt.y, label: endEndpoint.label },
+          });
+          setCadHud({
+            x: pt.x,
+            y: pt.y,
+            text: `Snap: ${endEndpoint.label}`,
+          });
+        } else if (endOsnap) {
+          const pt = { x: endOsnap.x, y: endOsnap.y };
+          st.snappedEndPt = pt;
+          st.endSnap = null;
+          setActiveSnapMarkers([
+            {
+              id: `fh-end-osnap-${endOsnap.type}-${Math.round(pt.x)}-${Math.round(pt.y)}`,
+              x: pt.x,
+              y: pt.y,
+              type: endOsnap.type,
+              label: endOsnap.label,
+            },
+          ]);
+          setFreehandPreview({
+            points: [...pts, pt],
+            closeToStart: false,
+            closeExistingPath: false,
+            snapTarget: { x: pt.x, y: pt.y, label: endOsnap.label },
+          });
+          setCadHud({
+            x: pt.x,
+            y: pt.y,
+            text: `Snap: ${endOsnap.label}`,
+          });
+        } else {
+          st.snappedEndPt = null;
+          st.endSnap = null;
+          setActiveSnapMarkers([]);
+          setFreehandPreview({
+            points: [...pts, { x: pointer.x, y: pointer.y }],
+            closeToStart: false,
+            closeExistingPath: false,
+            snapTarget: null,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: `Freehand: ${Math.round(st.totalLen)} px`,
+          });
+        }
+        return;
+      }
+
       // 2-Point Line Live Rubber-Band Preview (after 1st click, waiting for 2nd click)
       if (activeTool === 'line2p' && line2pStartRef.current) {
         const start = line2pStartRef.current;
@@ -4091,9 +4677,9 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       const hoverSnapTools: ToolType[] = [
         'pick',
         'freehand_pick',
+        'freehand',
         'line2p',
         'rectangle',
-        'rect3p',
         'ellipse',
         'ellipse3p',
         'polygon',
@@ -4115,21 +4701,36 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
 
       if (
         hoverSnapTools.includes(activeTool) &&
-        currentSnap?.enabled &&
         !grabbedPointRef.current &&
         evt.buttons === 0
       ) {
-        const osnap = findNearestOsnapPoint(
-          pointer.x,
-          pointer.y,
-          canvas.getObjects(),
-          null,
-          pageConfigRef.current,
-          currentSnap,
-          curZoom
-        );
+        const endpointTol = Math.min(22, Math.max(5, 13 / curZoom));
+        const fhEndpoint =
+          activeTool === 'freehand'
+            ? findNearestFreehandEndpoint(pointer.x, pointer.y, canvas.getObjects(), endpointTol)
+            : null;
+        const osnap =
+          !fhEndpoint && currentSnap?.enabled
+            ? findNearestOsnapPoint(
+                pointer.x,
+                pointer.y,
+                canvas.getObjects(),
+                null,
+                pageConfigRef.current,
+                currentSnap,
+                curZoom
+              )
+            : null;
 
-        if (osnap) {
+        if (fhEndpoint) {
+          setHoverSnapMarker({
+            id: `hover-fh-ep-${Math.round(fhEndpoint.x)}-${Math.round(fhEndpoint.y)}`,
+            x: fhEndpoint.x,
+            y: fhEndpoint.y,
+            type: 'node',
+            label: fhEndpoint.label,
+          });
+        } else if (osnap) {
           setHoverSnapMarker({
             id: `hover-${osnap.type}-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
             x: osnap.x,
@@ -4187,6 +4788,131 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       setActiveSnapMarkers([]);
       setActivePolarGuide(null);
       setCadHud(null);
+
+      // Finalize Freehand vector stroke (with closed-loop & endpoint-to-endpoint closing)
+      if (activeTool === 'freehand' && freehandDrawRef.current) {
+        const st = freehandDrawRef.current;
+        freehandDrawRef.current = null;
+        setFreehandPreview(null);
+
+        const curZoom = zoomLevelRef.current || 1;
+        const curFill = currentFillRef.current;
+        const curStroke = currentStrokeRef.current || '#000000';
+        const curProps = propertiesRef.current;
+        const sw = curProps.strokeWidth && curProps.strokeWidth > 0 ? curProps.strokeWidth : 0.25;
+
+        const pts = [...st.points];
+        if (pts.length < 2 || st.totalLen < 2.5 / curZoom) {
+          return;
+        }
+
+        const rdpEps = Math.max(0.7, 1.35 / curZoom);
+
+        if (st.closeToStart) {
+          const trimmed = [...pts];
+          const trimRadius = Math.max(1.5, 3 / curZoom);
+          while (
+            trimmed.length > 3 &&
+            Math.hypot(
+              trimmed[trimmed.length - 1].x - trimmed[0].x,
+              trimmed[trimmed.length - 1].y - trimmed[0].y
+            ) <= trimRadius
+          ) {
+            trimmed.pop();
+          }
+          const simplified = simplifyPointsRDP(trimmed, rdpEps);
+          if (simplified.length >= 3) {
+            const cmds = buildFreehandCubicCommands(simplified, true);
+            const pathObj = new fabric.Path(commandsToSvgD(cmds), {
+              fill: curFill,
+              stroke: curStroke,
+              strokeWidth: sw,
+              strokeUniform: true,
+              strokeLineCap: 'round',
+              strokeLineJoin: 'round',
+              selectable: false,
+              evented: false,
+            });
+            (pathObj as any).isCurve = true;
+            ensureObjectId(pathObj, 'Closed Curve');
+            if (isPowerClipEditing) {
+              (pathObj as any).isPowerClipContent = true;
+            }
+            disableObjectCaching(pathObj);
+            canvas.add(pathObj);
+            pathObj.setCoords();
+            canvas.setActiveObject(pathObj);
+            onSelectionChange(pathObj);
+            canvas.requestRenderAll();
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (pathObj as any).id, pathObj.toJSON());
+            onNotifyToastRef.current?.('Freehand shape closed');
+            return;
+          }
+        }
+
+        if (st.closeExistingPath && st.startSnap?.pathObj && st.snappedEndPt) {
+          const targetPath = st.startSnap.pathObj;
+          const fullPts = [...pts, { ...st.snappedEndPt }];
+          const simplified = simplifyPointsRDP(fullPts, rdpEps);
+          const orderedPts = st.startSnap.endRole === 'end' ? simplified : [...simplified].reverse();
+          const sceneCmds = buildFreehandCubicCommands(orderedPts, false);
+          const localSegs: any[][] = [];
+          for (let i = 1; i < sceneCmds.length; i++) {
+            const cmd = sceneCmds[i];
+            if (cmd[0] === 'C') {
+              const c1 = sceneToPathCoord(targetPath, cmd[1], cmd[2]);
+              const c2 = sceneToPathCoord(targetPath, cmd[3], cmd[4]);
+              const p = sceneToPathCoord(targetPath, cmd[5], cmd[6]);
+              localSegs.push(['C', c1.x, c1.y, c2.x, c2.y, p.x, p.y]);
+            } else if (cmd[0] === 'L') {
+              const p = sceneToPathCoord(targetPath, cmd[1], cmd[2]);
+              localSegs.push(['L', p.x, p.y]);
+            }
+          }
+          if (localSegs.length > 0 && Array.isArray(targetPath.path)) {
+            targetPath.path = [...(targetPath.path as any[][]), ...localSegs, ['Z']] as any;
+            targetPath.set({ fill: curFill, strokeUniform: true });
+            finalizePathMutation(targetPath);
+            disableObjectCaching(targetPath);
+            canvas.setActiveObject(targetPath);
+            onSelectionChange(targetPath);
+            canvas.requestRenderAll();
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+            onNotifyToastRef.current?.('Path closed');
+            return;
+          }
+        }
+
+        const finalPts = st.snappedEndPt ? [...pts, { ...st.snappedEndPt }] : pts;
+        const simplified = simplifyPointsRDP(finalPts, rdpEps);
+        const cmds = buildFreehandCubicCommands(simplified, false);
+        const pathObj = new fabric.Path(commandsToSvgD(cmds), {
+          fill: 'transparent',
+          stroke: curStroke,
+          strokeWidth: sw,
+          strokeUniform: true,
+          strokeLineCap: 'round',
+          strokeLineJoin: 'round',
+          selectable: false,
+          evented: false,
+        });
+        (pathObj as any).isCurve = true;
+        ensureObjectId(pathObj, 'Freehand Curve');
+        if (isPowerClipEditing) {
+          (pathObj as any).isPowerClipContent = true;
+        }
+        disableObjectCaching(pathObj);
+        canvas.add(pathObj);
+        pathObj.setCoords();
+        canvas.setActiveObject(pathObj);
+        onSelectionChange(pathObj);
+        canvas.requestRenderAll();
+        onCanvasModified?.();
+        socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (pathObj as any).id, pathObj.toJSON());
+        return;
+      }
 
       // Finalize Shape Tool node/handle/segment/marquee operation
       if (activeTool === 'shape' && curveDragRef.current) {
@@ -4756,6 +5482,13 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           setCropDraftRect(null);
           onUpdateCropToolsConfig?.({ cropRegion: null });
           setCadHud(null);
+        } else if (activeTool === 'freehand' && freehandDrawRef.current) {
+          freehandDrawRef.current = null;
+          setFreehandPreview(null);
+          setActiveSnapMarkers([]);
+          setCadHud(null);
+        } else if (activeTool === 'text') {
+          onSelectTool('pick');
         } else if (activeTool === 'transparency') {
           if (transparencyPopupRef.current) {
             cancelTransparencyPopup();
@@ -5046,7 +5779,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
 
     const upperEl = canvas.upperCanvasEl;
 
-    // Capture-phase middle-mouse pan: prevents Fabric from accidentally selecting/dragging objects underneath
+    // Capture-phase middle-mouse pan & Zoom Tool (left click/drag window zoom in, right click zoom out)
     const handleCaptureMouseDown = (e: MouseEvent) => {
       if (e.button === 1) {
         e.preventDefault();
@@ -5056,10 +5789,76 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         setHoverSnapMarker(null);
         canvas.defaultCursor = 'grabbing';
         (canvas as any)._currentTransform = null;
+        return;
+      }
+
+      if (activeToolRef.current === 'zoom') {
+        const desk = deskRef.current;
+        const rect = desk ? desk.getBoundingClientRect() : { left: 0, top: 0 };
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+
+        if (e.button === 2) {
+          // Right-click in Zoom Tool: zoom back (zoom out 50%) centered at cursor
+          e.preventDefault();
+          e.stopPropagation();
+          zoomDragRef.current = null;
+          setZoomMarquee(null);
+          setContextMenuPos(null);
+
+          const curZoom = zoomLevelRef.current || 1;
+          const curPan = panRef.current;
+          const sceneX = (screenX - curPan.x) / curZoom;
+          const sceneY = (screenY - curPan.y) / curZoom;
+          const newZoom = Math.max(0.01, Number((curZoom * 0.5).toFixed(4)));
+          const newPanX = Math.round(screenX - sceneX * newZoom);
+          const newPanY = Math.round(screenY - sceneY * newZoom);
+
+          setPan({ x: newPanX, y: newPanY });
+          canvas.setViewportTransform([newZoom, 0, 0, newZoom, newPanX, newPanY]);
+          canvas.requestRenderAll();
+          onZoomChangeRef.current(newZoom);
+          return;
+        }
+
+        if (e.button === 0) {
+          // Left-click / drag in Zoom Tool: start marquee window tracking
+          e.preventDefault();
+          e.stopPropagation();
+          setHoverSnapMarker(null);
+          zoomDragRef.current = {
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startScreenX: screenX,
+            startScreenY: screenY,
+            isDragging: false,
+          };
+          return;
+        }
       }
     };
 
     const handleWindowMouseMove = (e: MouseEvent) => {
+      if (zoomDragRef.current) {
+        const drag = zoomDragRef.current;
+        const desk = deskRef.current;
+        const rect = desk ? desk.getBoundingClientRect() : { left: 0, top: 0 };
+        const curScreenX = e.clientX - rect.left;
+        const curScreenY = e.clientY - rect.top;
+        if (!drag.isDragging && Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 5) {
+          drag.isDragging = true;
+        }
+        if (drag.isDragging) {
+          setZoomMarquee({
+            x1: Math.min(drag.startScreenX, curScreenX),
+            y1: Math.min(drag.startScreenY, curScreenY),
+            x2: Math.max(drag.startScreenX, curScreenX),
+            y2: Math.max(drag.startScreenY, curScreenY),
+          });
+        }
+        return;
+      }
+
       if (!isPanningRef.current) return;
       setHoverSnapMarker(null);
       const deltaX = e.clientX - lastPanPosRef.current.x;
@@ -5077,6 +5876,62 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     };
 
     const handleWindowMouseUp = (e: MouseEvent) => {
+      if (zoomDragRef.current) {
+        const drag = zoomDragRef.current;
+        zoomDragRef.current = null;
+        setZoomMarquee(null);
+        if (e.button !== 0) return;
+
+        const desk = deskRef.current;
+        const rect = desk ? desk.getBoundingClientRect() : { left: 0, top: 0 };
+        const deskW = desk?.clientWidth || 1000;
+        const deskH = desk?.clientHeight || 700;
+        const endScreenX = e.clientX - rect.left;
+        const endScreenY = e.clientY - rect.top;
+        const curZoom = zoomLevelRef.current || 1;
+        const curPan = panRef.current;
+
+        const boxW = Math.abs(endScreenX - drag.startScreenX);
+        const boxH = Math.abs(endScreenY - drag.startScreenY);
+
+        if (drag.isDragging && boxW > 6 && boxH > 6) {
+          // Drag-window marquee zoom: fit dragged area inside viewport
+          const sx1 = (Math.min(drag.startScreenX, endScreenX) - curPan.x) / curZoom;
+          const sy1 = (Math.min(drag.startScreenY, endScreenY) - curPan.y) / curZoom;
+          const sx2 = (Math.max(drag.startScreenX, endScreenX) - curPan.x) / curZoom;
+          const sy2 = (Math.max(drag.startScreenY, endScreenY) - curPan.y) / curZoom;
+
+          const sceneW = Math.max(0.001, sx2 - sx1);
+          const sceneH = Math.max(0.001, sy2 - sy1);
+          const rawZoom = Math.min((deskW * 0.96) / sceneW, (deskH * 0.96) / sceneH);
+          const newZoom = Math.min(4096, Math.max(0.01, Number(rawZoom.toFixed(4))));
+
+          const centerX = (sx1 + sx2) / 2;
+          const centerY = (sy1 + sy2) / 2;
+          const newPanX = Math.round(deskW / 2 - centerX * newZoom);
+          const newPanY = Math.round(deskH / 2 - centerY * newZoom);
+
+          setPan({ x: newPanX, y: newPanY });
+          canvas.setViewportTransform([newZoom, 0, 0, newZoom, newPanX, newPanY]);
+          canvas.requestRenderAll();
+          onZoomChangeRef.current(newZoom);
+        } else {
+          // Single left-click: zoom in (or zoom out if Alt held) centered at cursor
+          const factor = e.altKey ? 0.5 : 2;
+          const sceneX = (endScreenX - curPan.x) / curZoom;
+          const sceneY = (endScreenY - curPan.y) / curZoom;
+          const newZoom = Math.min(4096, Math.max(0.01, Number((curZoom * factor).toFixed(4))));
+          const newPanX = Math.round(endScreenX - sceneX * newZoom);
+          const newPanY = Math.round(endScreenY - sceneY * newZoom);
+
+          setPan({ x: newPanX, y: newPanY });
+          canvas.setViewportTransform([newZoom, 0, 0, newZoom, newPanX, newPanY]);
+          canvas.requestRenderAll();
+          onZoomChangeRef.current(newZoom);
+        }
+        return;
+      }
+
       if (activeToolRef.current === 'shape' && curveDragRef.current?.mode === 'marquee') {
         const drag = curveDragRef.current;
         curveDragRef.current = null;
@@ -5121,6 +5976,10 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         setCurveMarquee(null);
       }
 
+      if (activeToolRef.current === 'freehand' && freehandDrawRef.current) {
+        handleMouseUp({ e } as any);
+      }
+
       if (!isPanningRef.current) return;
       isPanningRef.current = false;
       canvas.defaultCursor = activeToolRef.current === 'pan' ? 'grab' : activeToolRef.current === 'pick' ? 'default' : 'crosshair';
@@ -5141,6 +6000,10 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
+      if (activeToolRef.current === 'zoom') {
+        e.stopPropagation();
+        return;
+      }
       const target = resolveEventTarget(canvas, e);
       if (target && typeof canvas.setActiveObject === 'function') {
         canvas.setActiveObject(target);
@@ -5231,7 +6094,15 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         )}
 
         {/* Canvas Desk Area */}
-        <div ref={deskRef} className="flex-1 relative overflow-hidden flex items-center justify-center">
+        <div
+          ref={deskRef}
+          onContextMenu={(e) => {
+            if (activeTool === 'zoom') {
+              e.preventDefault();
+            }
+          }}
+          className="flex-1 relative overflow-hidden flex items-center justify-center"
+        >
           {/* Subtle Grid Dots Background */}
           {showGrid && (
             <div
@@ -5416,10 +6287,10 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                           <circle
                             cx={hx}
                             cy={hy}
-                            r={isHov ? 4.8 : 3.6}
+                            r={isHov ? 3.8 : 2.8}
                             fill={isHov ? '#06b6d4' : '#ffffff'}
                             stroke="#0284c7"
-                            strokeWidth="1.5"
+                            strokeWidth="1.3"
                           />
                         </g>
                       );
@@ -5436,16 +6307,16 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                             x2={hx}
                             y2={hy}
                             stroke="#0284c7"
-                            strokeWidth="1.1"
+                            strokeWidth="1"
                             strokeDasharray="3 2"
                           />
                           <circle
                             cx={hx}
                             cy={hy}
-                            r={isHov ? 4.8 : 3.6}
+                            r={isHov ? 3.8 : 2.8}
                             fill={isHov ? '#06b6d4' : '#ffffff'}
                             stroke="#0284c7"
-                            strokeWidth="1.5"
+                            strokeWidth="1.3"
                           />
                         </g>
                       );
@@ -5460,7 +6331,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                 const isHov = curveOverlay.hoverNodeCmd === node.cmdIndex;
                 const nx = pan.x + node.x * zoomLevel;
                 const ny = pan.y + node.y * zoomLevel;
-                const r = isSel || isHov ? 5 : 4;
+                const r = isSel || isHov ? 3.6 : 2.8;
                 const fill = isSel ? '#0078d7' : isHov ? '#bae6fd' : '#ffffff';
                 const stroke = isSel ? '#0f172a' : node.isSubpathStart ? '#0284c7' : '#1e293b';
 
@@ -5474,7 +6345,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                         height={r * 2}
                         fill={fill}
                         stroke={stroke}
-                        strokeWidth={isSel ? '1.8' : '1.4'}
+                        strokeWidth={isSel ? '1.5' : '1.2'}
                       />
                     )}
                     {node.nodeType === 'smooth' && (
@@ -5484,23 +6355,23 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                         r={r}
                         fill={fill}
                         stroke={stroke}
-                        strokeWidth={isSel ? '1.8' : '1.4'}
+                        strokeWidth={isSel ? '1.5' : '1.2'}
                       />
                     )}
                     {node.nodeType === 'symmetrical' && (
                       <polygon
-                        points={`0,${-r - 1} ${r + 1},0 0,${r + 1} ${-r - 1},0`}
+                        points={`0,${-r - 0.8} ${r + 0.8},0 0,${r + 0.8} ${-r - 0.8},0`}
                         fill={fill}
                         stroke={stroke}
-                        strokeWidth={isSel ? '1.8' : '1.4'}
+                        strokeWidth={isSel ? '1.5' : '1.2'}
                       />
                     )}
                     {node.isSubpathStart && (
                       <rect
-                        x={-r - 2.5}
-                        y={-r - 2.5}
-                        width={(r + 2.5) * 2}
-                        height={(r + 2.5) * 2}
+                        x={-r - 2}
+                        y={-r - 2}
+                        width={(r + 2) * 2}
+                        height={(r + 2) * 2}
                         fill="none"
                         stroke="#0284c7"
                         strokeWidth="1"
@@ -5988,8 +6859,8 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                       stroke={currentStroke || '#000000'}
                       strokeWidth={
                         (properties.strokeWidth ?? 0.25) <= HAIRLINE_THRESHOLD_PT
-                          ? 0.75
-                          : (properties.strokeWidth || 0.25) * zoomLevel
+                          ? 1
+                          : Math.max(0.75, (properties.strokeWidth || 0.25) * zoomLevel)
                       }
                       strokeLinecap="round"
                     />
@@ -6004,6 +6875,68 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                     />
                     <circle cx={lx1} cy={ly1} r={4} fill="#0078d7" stroke="#ffffff" strokeWidth="1.5" />
                     <circle cx={lx2} cy={ly2} r={3.5} fill="#06b6d4" stroke="#ffffff" strokeWidth="1.2" />
+                  </g>
+                );
+              })()}
+
+              {/* Freehand Stroke Live Preview + Start Anchor & Close-Loop Snap Indicator */}
+              {freehandPreview && freehandPreview.points.length > 0 && (() => {
+                const fPts = freehandPreview.points;
+                const sPt = { x: pan.x + fPts[0].x * zoomLevel, y: pan.y + fPts[0].y * zoomLevel };
+                const polyStr = fPts.map((p) => `${pan.x + p.x * zoomLevel},${pan.y + p.y * zoomLevel}`).join(' ');
+                const isClosing = freehandPreview.closeToStart || freehandPreview.closeExistingPath;
+                const strokeCol = currentStroke && currentStroke !== 'transparent' ? currentStroke : '#000000';
+                const previewWidth =
+                  (properties.strokeWidth ?? 0.25) <= HAIRLINE_THRESHOLD_PT
+                    ? 1
+                    : Math.max(1, (properties.strokeWidth || 0.25) * zoomLevel);
+                const snapTarget = freehandPreview.snapTarget
+                  ? {
+                      x: pan.x + freehandPreview.snapTarget.x * zoomLevel,
+                      y: pan.y + freehandPreview.snapTarget.y * zoomLevel,
+                    }
+                  : null;
+                return (
+                  <g>
+                    {fPts.length >= 2 && (
+                      <polyline
+                        points={polyStr}
+                        fill="none"
+                        stroke={strokeCol}
+                        strokeWidth={previewWidth}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    )}
+                    {fPts.length >= 2 && (
+                      <polyline
+                        points={polyStr}
+                        fill="none"
+                        stroke={isClosing ? '#22c55e' : '#06b6d4'}
+                        strokeWidth="1.15"
+                        strokeDasharray="4 3"
+                        opacity="0.85"
+                      />
+                    )}
+                    {isClosing && snapTarget && (
+                      <circle
+                        cx={snapTarget.x}
+                        cy={snapTarget.y}
+                        r={10}
+                        fill="rgba(34, 197, 94, 0.22)"
+                        stroke="#22c55e"
+                        strokeWidth="2"
+                      />
+                    )}
+                    <rect
+                      x={sPt.x - (freehandPreview.closeToStart ? 5.5 : 4)}
+                      y={sPt.y - (freehandPreview.closeToStart ? 5.5 : 4)}
+                      width={(freehandPreview.closeToStart ? 5.5 : 4) * 2}
+                      height={(freehandPreview.closeToStart ? 5.5 : 4) * 2}
+                      fill={freehandPreview.closeToStart ? '#22c55e' : '#ffffff'}
+                      stroke={freehandPreview.closeToStart ? '#15803d' : '#0078d7'}
+                      strokeWidth="1.6"
+                    />
                   </g>
                 );
               })()}
@@ -6927,6 +7860,26 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
             );
           })()}
 
+          {/* Zoom Tool Marquee Selection Window Box */}
+          {zoomMarquee && (() => {
+            const mw = Math.max(1, zoomMarquee.x2 - zoomMarquee.x1);
+            const mh = Math.max(1, zoomMarquee.y2 - zoomMarquee.y1);
+            return (
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-30 overflow-visible">
+                <rect
+                  x={zoomMarquee.x1}
+                  y={zoomMarquee.y1}
+                  width={mw}
+                  height={mh}
+                  fill="rgba(0, 120, 215, 0.12)"
+                  stroke="#0078d7"
+                  strokeWidth="1.25"
+                  strokeDasharray="4 3"
+                />
+              </svg>
+            );
+          })()}
+
           {/* Collaborative Remote Cursors Overlay */}
           {collaborators
             .filter((user) => user.id !== currentUser.id && user.cursor)
@@ -7121,6 +8074,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           onConvertToCurves={onConvertToCurves}
           onBringIntoFocus={onBringIntoFocus}
           onBreakApart={onBreakApart}
+          onShapeOperation={onShapeOperation}
           onToggleHide={onToggleHide}
           onToggleLock={onToggleLock}
           onOpenProperties={onOpenProperties}

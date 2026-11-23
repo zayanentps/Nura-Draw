@@ -47,6 +47,11 @@ import {
 } from './utils/canvasHelpers';
 import { convertObjectToCurves } from './utils/curveEngine';
 import {
+  executeShapeOperation,
+  breakApartCombinedPath,
+  ShapeOperation,
+} from './utils/shapingEngine';
+import {
   getSymmetryTransforms,
   cloneAndTransformSymmetryObject,
   transformSymmetryConfigByGroup,
@@ -120,6 +125,31 @@ export default function App() {
   // Canvas and active tool
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
   const [activeTool, setActiveTool] = useState<ToolType>('pick');
+  const handleSelectTool = useCallback(
+    (nextTool: ToolType) => {
+      if (canvas) {
+        const activeObj = canvas.getActiveObject() as any;
+        if (activeObj && activeObj.isEditing && nextTool !== 'text') {
+          if (typeof activeObj.exitEditing === 'function') {
+            activeObj.exitEditing();
+          }
+          const isLocked = !!activeObj.isLocked;
+          activeObj.set({
+            selectable: true,
+            evented: true,
+            hasControls: !isLocked,
+            hasBorders: true,
+          });
+          activeObj.setCoords();
+          canvas.setActiveObject(activeObj);
+          setSelectedObject(activeObj);
+          canvas.requestRenderAll();
+        }
+      }
+      setActiveTool(nextTool);
+    },
+    [canvas]
+  );
   const [dimensionConfig, setDimensionConfig] = useState<DimensionConfig>({
     precision: 2,
     unit: 'auto',
@@ -1435,10 +1465,43 @@ export default function App() {
     [canvas, pushHistory, showToast]
   );
 
+  const handleShapeOperation = useCallback(
+    (op: ShapeOperation) => {
+      if (!canvas) return;
+      const res = executeShapeOperation(canvas, op);
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      setSelectedObject(canvas.getActiveObject() || null);
+      setHasCanvasObjects(canvas.getObjects().length > 0);
+      socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      pushHistory(res.label || 'Shaping');
+      showToast(res.message);
+    },
+    [canvas, pushHistory, showToast]
+  );
+
   const handleBreakApart = useCallback(() => {
     if (!canvas || !selectedObject) return;
     if (selectedObject.type === 'group') {
       handleUngroup();
+    } else if (selectedObject.type === 'path') {
+      const pieces = breakApartCombinedPath(selectedObject as fabric.Path);
+      if (pieces && pieces.length > 1) {
+        const allObjs = canvas.getObjects();
+        const prevIdx = Math.max(0, allObjs.indexOf(selectedObject));
+        canvas.discardActiveObject();
+        canvas.remove(selectedObject);
+        canvas.insertAt(Math.min(prevIdx, canvas.getObjects().length), ...pieces);
+        const sel = new fabric.ActiveSelection(pieces, { canvas });
+        canvas.setActiveObject(sel);
+        setSelectedObject(sel);
+        canvas.requestRenderAll();
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        pushHistory('Break Apart Curve');
+        showToast(`Broke apart into ${pieces.length} curve objects`);
+      }
     } else if (selectedObject.type === 'i-text' || selectedObject.type === 'text') {
       const text = (selectedObject as fabric.IText).text || '';
       const lines = text.split('\n');
@@ -1461,7 +1524,7 @@ export default function App() {
         pushHistory();
       }
     }
-  }, [canvas, selectedObject, handleUngroup, pushHistory]);
+  }, [canvas, selectedObject, handleUngroup, pushHistory, showToast]);
 
   const handleToggleHide = useCallback(() => {
     if (!canvas || !selectedObject) return;
@@ -3144,6 +3207,16 @@ export default function App() {
         return;
       }
 
+      // Ctrl+L / Cmd+L = Combine Selected Objects (NuraDraw shortcut)
+      if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === 'l' || e.key === 'L')) {
+        const activeObj = canvas?.getActiveObject();
+        if (activeObj && activeObj.type === 'activeselection') {
+          e.preventDefault();
+          handleShapeOperation('combine');
+          return;
+        }
+      }
+
       // Alt+S = Create New Symmetry (NuraDraw shortcut)
       if (e.altKey && !isCtrlOrCmd && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
@@ -3452,6 +3525,7 @@ export default function App() {
     pageConfig,
     handleConvertToCurves,
     handleBreakApart,
+    handleShapeOperation,
     handleCreateSymmetry,
     handleFinishSymmetry,
     handleOpenProperties,
@@ -6229,7 +6303,7 @@ export default function App() {
         onBitmapGrayscale={handleBitmapGrayscale}
         onBitmapInvert={handleBitmapInvert}
         onBitmapCmykSeparation={handleBitmapCmykSeparation}
-        onSelectTool={setActiveTool}
+        onSelectTool={handleSelectTool}
         showNonPrintingChars={showNonPrintingChars}
         useHyphenation={useHyphenation}
         showTextFrames={showTextFrames}
@@ -6265,6 +6339,7 @@ export default function App() {
         }}
         onClearSelectedConstraints={handleClearSelectedConstraints}
         onClearAllConstraints={handleClearAllConstraints}
+        onShapeOperation={handleShapeOperation}
       />
 
       {/* Main Workspace (Left Toolbox + Center Canvas + Right Dockers) */}
@@ -6272,7 +6347,7 @@ export default function App() {
         {/* Left Toolbox */}
         <Toolbox
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
+          onSelectTool={handleSelectTool}
           theme={theme}
           onOpenSettings={() => setShowSettingsModal(true)}
           onOpenQrCode={() => setShowQrCodeModal(true)}
@@ -6281,7 +6356,7 @@ export default function App() {
         {/* Center Canvas Area with Rulers & Collaborator Cursors */}
         <NuraCanvas
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
+          onSelectTool={handleSelectTool}
           pageConfig={pageConfig}
           properties={properties}
           onUpdateProperties={handleUpdateProperties}
@@ -6374,6 +6449,7 @@ export default function App() {
           onConvertToCurves={handleConvertToCurves}
           onBringIntoFocus={handleBringIntoFocus}
           onBreakApart={handleBreakApart}
+          onShapeOperation={handleShapeOperation}
           onToggleHide={handleToggleHide}
           onToggleLock={handleToggleLock}
           onOpenProperties={handleOpenProperties}
@@ -6684,7 +6760,7 @@ export default function App() {
           activePageIndex={activePageIndex}
           onSelectPage={handleSelectPage}
           onAddPage={handleAddPage}
-          onSelectTool={setActiveTool}
+          onSelectTool={handleSelectTool}
           onConvertToCurves={handleConvertToCurves}
           onGroup={handleGroup}
           onUngroup={handleUngroup}
@@ -6709,7 +6785,7 @@ export default function App() {
           onSelectStroke={handleSelectStroke}
           theme={theme}
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
+          onSelectTool={handleSelectTool}
           documentSwatches={currentDocumentPalette}
           onOpenPaletteEditor={handleOpenPaletteEditor}
         />

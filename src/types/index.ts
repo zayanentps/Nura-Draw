@@ -18,7 +18,6 @@ export type ToolType =
   | 'curve_3p'
   | 'artistic_media'
   | 'rectangle'
-  | 'rect3p'
   | 'ellipse'
   | 'ellipse3p'
   | 'polygon'
