@@ -561,6 +561,12 @@ export function findNearestOsnapPoint(
   const match = pickBestOsnapTarget(x, y, candidates, threshold, zoomLevel);
   if (match) return match.target;
 
+  // Guideline snap (horizontal, vertical, and rotated guidelines + guideline intersections)
+  if (snapConfig.snapToGuidelines !== false) {
+    const gSnap = findClosestGuidelineSnap(x, y, allObjects, excludeObj, threshold);
+    if (gSnap) return gSnap;
+  }
+
   // Grid snap fallback
   const gridSize = snapConfig.gridSize || 20;
   if (snapConfig.snapToGrid && gridSize > 0) {
@@ -572,6 +578,93 @@ export function findNearestOsnapPoint(
   }
 
   return null;
+}
+
+interface ParsedGuideline {
+  obj: fabric.FabricObject;
+  cx: number;
+  cy: number;
+  nx: number;
+  ny: number;
+  ux: number;
+  uy: number;
+}
+
+function getVisibleGuidelines(
+  allObjects: fabric.FabricObject[],
+  excludeObj: fabric.FabricObject | null
+): ParsedGuideline[] {
+  const out: ParsedGuideline[] = [];
+  for (const obj of allObjects) {
+    if (!obj || obj === excludeObj || !obj.visible || !(obj as any).isGuideline) continue;
+    const c = obj.getCenterPoint?.() ?? { x: obj.left || 0, y: obj.top || 0 };
+    const rad = ((obj.angle || 0) * Math.PI) / 180;
+    const ux = Math.cos(rad);
+    const uy = Math.sin(rad);
+    out.push({
+      obj,
+      cx: c.x,
+      cy: c.y,
+      ux,
+      uy,
+      nx: -uy,
+      ny: ux,
+    });
+  }
+  return out;
+}
+
+function findClosestGuidelineSnap(
+  x: number,
+  y: number,
+  allObjects: fabric.FabricObject[],
+  excludeObj: fabric.FabricObject | null,
+  threshold: number
+): CalculatedSnapPoint | null {
+  const guides = getVisibleGuidelines(allObjects, excludeObj);
+  if (guides.length === 0) return null;
+
+  // 1. Check guideline-to-guideline intersections first
+  let bestInter: CalculatedSnapPoint | null = null;
+  let bestInterDist = threshold + 1;
+  for (let i = 0; i < guides.length; i++) {
+    for (let j = i + 1; j < guides.length; j++) {
+      const a = guides[i];
+      const b = guides[j];
+      const denom = a.ux * b.uy - a.uy * b.ux;
+      if (Math.abs(denom) < 1e-4) continue;
+      const dx = b.cx - a.cx;
+      const dy = b.cy - a.cy;
+      const t = (dx * b.uy - dy * b.ux) / denom;
+      const ix = a.cx + t * a.ux;
+      const iy = a.cy + t * a.uy;
+      const d = Math.hypot(ix - x, iy - y);
+      if (d <= threshold && d < bestInterDist) {
+        bestInterDist = d;
+        bestInter = { x: ix, y: iy, type: 'intersection', label: 'Guide Intersection', source: 'page' };
+      }
+    }
+  }
+  if (bestInter) return bestInter;
+
+  // 2. Closest perpendicular projection onto any guideline
+  let bestDist = threshold + 1;
+  let bestPt: CalculatedSnapPoint | null = null;
+  for (const g of guides) {
+    const signedD = (x - g.cx) * g.nx + (y - g.cy) * g.ny;
+    const absD = Math.abs(signedD);
+    if (absD <= threshold && absD < bestDist) {
+      bestDist = absD;
+      bestPt = {
+        x: x - signedD * g.nx,
+        y: y - signedD * g.ny,
+        type: 'perpendicular',
+        label: 'Guideline',
+        source: 'page',
+      };
+    }
+  }
+  return bestPt;
 }
 
 export function isOrthoActive(
@@ -775,6 +868,56 @@ export function calculateObjectSnapping(
   const deltaFromCurrentX = workLeft - currentLeft;
   const deltaFromCurrentY = workTop - currentTop;
 
+  // SPECIAL CASE: Dragging a Guideline itself -> snap along its normal to object & page feature points
+  if ((target as any).isGuideline) {
+    if (snapConfig.enabled && candidateTargetPoints.length > 0) {
+      const center = target.getCenterPoint?.() ?? { x: workLeft, y: workTop };
+      const rad = ((target.angle || 0) * Math.PI) / 180;
+      const nx = -Math.sin(rad);
+      const ny = Math.cos(rad);
+      const cX = center.x + deltaFromCurrentX;
+      const cY = center.y + deltaFromCurrentY;
+
+      let bestAbs = threshold + 1;
+      let bestSigned = 0;
+      let bestTp: CalculatedSnapPoint | null = null;
+
+      for (const tp of candidateTargetPoints) {
+        const signedD = (tp.x - cX) * nx + (tp.y - cY) * ny;
+        const absD = Math.abs(signedD);
+        if (absD <= threshold && absD < bestAbs) {
+          bestAbs = absD;
+          bestSigned = signedD;
+          bestTp = tp;
+        }
+      }
+
+      if (bestTp) {
+        activeMarkers.push({
+          id: `guide-snap-${bestTp.type}-${bestTp.x}-${bestTp.y}`,
+          x: bestTp.x,
+          y: bestTp.y,
+          type: bestTp.type,
+          label: bestTp.label,
+        });
+        return {
+          snappedLeft: workLeft + bestSigned * nx,
+          snappedTop: workTop + bestSigned * ny,
+          snapLines,
+          activeMarkers,
+          polarGuide,
+        };
+      }
+    }
+    return {
+      snappedLeft: workLeft,
+      snappedTop: workTop,
+      snapLines,
+      activeMarkers,
+      polarGuide,
+    };
+  }
+
   // PRIORITY 1: Grabbed Point 2D OSNAP Lock (disabled for diagonal jumps when strict Ortho is active; Priority 3 handles 1D Ortho-axis OSNAP)
   if (!orthoActive && grabbedPoint && candidateTargetPoints.length > 0) {
     const curGrabbedX = workLeft + grabbedPoint.offsetFromOrigin.dx;
@@ -840,6 +983,58 @@ export function calculateObjectSnapping(
         dy: bestOverall.dy,
         dist: bestOverall.dist,
       };
+    }
+  }
+
+  // PRIORITY 2B: Guideline Snap (moving object snaps onto horizontal, vertical, or rotated guidelines)
+  if (!best2DLock && snapConfig.enabled && snapConfig.snapToGuidelines !== false) {
+    const guides = getVisibleGuidelines(allObjects, target);
+    if (guides.length > 0) {
+      const sourcePoints = grabbedPoint
+        ? [
+            {
+              x: currentLeft + grabbedPoint.offsetFromOrigin.dx,
+              y: currentTop + grabbedPoint.offsetFromOrigin.dy,
+            },
+          ]
+        : extractMovingObjectPoints(target);
+
+      let bestDist = threshold + 1;
+      let bestDx = 0;
+      let bestDy = 0;
+      let bestPtOnGuide: { x: number; y: number } | null = null;
+      let bestGuide: ParsedGuideline | null = null;
+
+      for (const sp of sourcePoints) {
+        const sx = sp.x + deltaFromCurrentX;
+        const sy = sp.y + deltaFromCurrentY;
+        for (const g of guides) {
+          const signedD = (sx - g.cx) * g.nx + (sy - g.cy) * g.ny;
+          const absD = Math.abs(signedD);
+          if (absD <= threshold && absD < bestDist) {
+            bestDist = absD;
+            bestDx = deltaFromCurrentX - signedD * g.nx;
+            bestDy = deltaFromCurrentY - signedD * g.ny;
+            bestPtOnGuide = { x: sx - signedD * g.nx, y: sy - signedD * g.ny };
+            bestGuide = g;
+          }
+        }
+      }
+
+      if (bestPtOnGuide && bestGuide) {
+        best2DLock = {
+          target: {
+            x: bestPtOnGuide.x,
+            y: bestPtOnGuide.y,
+            type: 'perpendicular',
+            label: 'Guideline',
+            source: 'page',
+          },
+          dx: bestDx,
+          dy: bestDy,
+          dist: bestDist,
+        };
+      }
     }
   }
 

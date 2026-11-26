@@ -98,6 +98,38 @@ import {
 } from './NuraTopPanelIcons';
 import type { ShapeOperation } from '../utils/shapingEngine';
 import {
+  SHADOW_PRESETS,
+  extractTargetShadowForUi,
+  getShadowMetrics,
+} from '../utils/shadowHelpers';
+import {
+  CONTOUR_PRESETS,
+  ContourDirection,
+  DEFAULT_CONTOUR_PARAMS,
+  normalizeContourHex,
+} from '../utils/contourHelpers';
+import {
+  BlendColorMode,
+  DEFAULT_BLEND_PARAMS,
+} from '../utils/blendHelpers';
+import {
+  ExtrudeColorMode,
+  ExtrudeType,
+  EXTRUDE_PRESETS,
+  DEFAULT_EXTRUDE_PARAMS,
+  normalizeExtrudeHex,
+} from '../utils/extrudeHelpers';
+import {
+  EnvelopeMode,
+  ENVELOPE_PRESETS,
+  DEFAULT_ENVELOPE_MODE,
+} from '../utils/envelopeHelpers';
+import {
+  BlockShadowParams,
+  DEFAULT_BLOCK_SHADOW_PARAMS,
+  normalizeBlockShadowHex,
+} from '../utils/blockShadowHelpers';
+import {
   Undo2,
   Redo2,
   Settings,
@@ -401,6 +433,75 @@ interface NuraTopPanelProps {
   onUpdateSmartFillConfig?: (cfg: Partial<SmartFillConfig>) => void;
   // Multi-object Shaping & Combine
   onShapeOperation?: (op: ShapeOperation) => void;
+  // Interactive Drop Shadow parameter updates
+  onUpdateShadow?: (
+    patch: {
+      offsetX?: number;
+      offsetY?: number;
+      distance?: number;
+      angle?: number;
+      blur?: number;
+      transparency?: number;
+      colorHex?: string;
+      remove?: boolean;
+    },
+    commit?: boolean
+  ) => void;
+  // Interactive Contour parameter updates
+  onUpdateContour?: (
+    patch: {
+      direction?: ContourDirection;
+      steps?: number;
+      offsetPx?: number;
+      outlineColor?: string;
+      fillColor?: string;
+      remove?: boolean;
+    },
+    commit?: boolean
+  ) => void;
+  // Interactive Blend parameter updates
+  onUpdateBlend?: (
+    patch: {
+      steps?: number;
+      colorMode?: BlendColorMode;
+      accelObject?: number;
+      accelColor?: number;
+      remove?: boolean;
+    },
+    commit?: boolean
+  ) => void;
+  // Interactive Extrude parameter updates
+  onUpdateExtrude?: (
+    patch: {
+      extrudeType?: ExtrudeType;
+      offsetX?: number;
+      offsetY?: number;
+      depth?: number;
+      colorMode?: ExtrudeColorMode;
+      solidColor?: string;
+      shadeColor?: string;
+      lightIntensity?: number;
+      showOutline?: boolean;
+      remove?: boolean;
+    },
+    commit?: boolean
+  ) => void;
+  // Interactive Envelope parameter updates
+  onUpdateEnvelope?: (
+    patch: {
+      presetId?: string;
+      mode?: EnvelopeMode;
+      mirrorOpposite?: boolean;
+      reset?: boolean;
+      remove?: boolean;
+    },
+    commit?: boolean
+  ) => void;
+  // Interactive Block Shadow parameter updates
+  onUpdateBlockShadow?: (
+    patch: Partial<BlockShadowParams> & { remove?: boolean },
+    commit?: boolean
+  ) => void;
 }
 
 const STROKE_WIDTHS = [
@@ -625,6 +726,12 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
   },
   onUpdateSmartFillConfig,
   onShapeOperation,
+  onUpdateShadow,
+  onUpdateContour,
+  onUpdateBlend,
+  onUpdateExtrude,
+  onUpdateEnvelope,
+  onUpdateBlockShadow,
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeFileSubmenu, setActiveFileSubmenu] = useState<string | null>(null);
@@ -6302,14 +6409,761 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                   )}
                 </div>
 
-                {['contour', 'blend', 'envelope', 'extrude', 'distort'].includes(activeTool) && (
+                {activeTool === 'shadow' && (() => {
+                  const targetShadow = extractTargetShadowForUi(selectedObject);
+                  const sm = getShadowMetrics(targetShadow, {
+                    color: properties.shadowColor,
+                    blur: properties.shadowBlur,
+                    offsetX: properties.shadowOffsetX,
+                    offsetY: properties.shadowOffsetY,
+                  });
+                  return (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Quick Shadow Presets */}
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const p = SHADOW_PRESETS.find((pr) => pr.id === e.target.value);
+                          if (p) {
+                            onUpdateShadow?.(
+                              {
+                                distance: p.distance,
+                                angle: p.angle,
+                                blur: p.blur,
+                                transparency: p.transparency,
+                                ...(p.colorHex ? { colorHex: p.colorHex } : {}),
+                              },
+                              true
+                            );
+                          }
+                        }}
+                        className="h-6 px-1.5 bg-white border border-[#abadb3] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 outline-none cursor-pointer"
+                        title="Apply Drop Shadow Preset"
+                      >
+                        <option value="" disabled>
+                          Presets...
+                        </option>
+                        {SHADOW_PRESETS.map((pr) => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Distance (px) */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Dist:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={400}
+                          step={1}
+                          value={Math.round(sm.distance)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) onUpdateShadow?.({ distance: Math.max(0, val) }, true);
+                          }}
+                          className="w-13 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Drop Shadow Distance (px)"
+                        />
+                        <span className="text-[10px] opacity-70">px</span>
+                      </label>
+
+                      {/* Angle (deg) */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Angle:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={359}
+                          step={5}
+                          value={Math.round(sm.angle)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) onUpdateShadow?.({ angle: val }, true);
+                          }}
+                          className="w-12 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Drop Shadow Angle (degrees)"
+                        />
+                        <span className="text-[10px] opacity-70">°</span>
+                      </label>
+
+                      {/* Transparency (%) */}
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        <span className="opacity-80">Transp:</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={sm.transparency}
+                          onChange={(e) => onUpdateShadow?.({ transparency: Number(e.target.value) }, false)}
+                          onMouseUp={(e) =>
+                            onUpdateShadow?.({ transparency: Number((e.target as HTMLInputElement).value) }, true)
+                          }
+                          className="w-16 h-1.5 accent-[#0078d7] cursor-pointer"
+                          title="Shadow Transparency (0% = Solid, 100% = Invisible)"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={sm.transparency}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) {
+                              onUpdateShadow?.({ transparency: Math.max(0, Math.min(100, val)) }, true);
+                            }
+                          }}
+                          className="w-11 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Shadow Transparency (%)"
+                        />
+                        <span className="text-[10px] opacity-70">%</span>
+                      </div>
+
+                      {/* Feathering / Blur (px) */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Feather:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.round(sm.blur)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) onUpdateShadow?.({ blur: Math.max(0, val) }, true);
+                          }}
+                          className="w-12 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Shadow Feathering / Blur (px)"
+                        />
+                      </label>
+
+                      {/* Color Swatch */}
+                      <label className="flex items-center gap-1 text-[11px]" title="Shadow Color">
+                        <span className="opacity-80">Color:</span>
+                        <input
+                          type="color"
+                          value={sm.colorHex}
+                          onChange={(e) => onUpdateShadow?.({ colorHex: e.target.value }, true)}
+                          className="w-6 h-6 p-0 border border-[#abadb3] rounded-xs bg-white cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Clear Shadow Button */}
+                      <button
+                        type="button"
+                        disabled={!sm.hasShadow}
+                        onClick={() => onUpdateShadow?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Remove Drop Shadow from selected object"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {activeTool === 'contour' && (() => {
+                  const cfg = (selectedObject as any)?.contourConfig as
+                    | {
+                        direction?: ContourDirection;
+                        steps?: number;
+                        offsetPx?: number;
+                        outlineColor?: string;
+                        fillColor?: string;
+                      }
+                    | undefined;
+                  const hasContour = !!cfg || !!(selectedObject as any)?.isContourStep;
+                  const dir: ContourDirection =
+                    cfg?.direction ?? properties.contourDirection ?? DEFAULT_CONTOUR_PARAMS.direction;
+                  const steps = Math.max(
+                    1,
+                    Math.min(50, Math.round(cfg?.steps ?? properties.contourSteps ?? DEFAULT_CONTOUR_PARAMS.steps))
+                  );
+                  const offsetPx = Math.max(
+                    1,
+                    Math.min(250, Math.round((cfg?.offsetPx ?? properties.contourOffset ?? DEFAULT_CONTOUR_PARAMS.offsetPx) * 10) / 10)
+                  );
+                  const outlineColor = normalizeContourHex(
+                    cfg?.outlineColor ?? properties.contourOutlineColor,
+                    DEFAULT_CONTOUR_PARAMS.outlineColor
+                  );
+                  const fillColor = normalizeContourHex(
+                    cfg?.fillColor ?? properties.contourFillColor,
+                    DEFAULT_CONTOUR_PARAMS.fillColor
+                  );
+
+                  return (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Quick Contour Presets */}
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const p = CONTOUR_PRESETS.find((pr) => pr.id === e.target.value);
+                          if (p) {
+                            onUpdateContour?.(
+                              {
+                                direction: p.direction,
+                                steps: p.steps,
+                                offsetPx: p.offsetPx,
+                                ...(p.outlineColor ? { outlineColor: p.outlineColor } : {}),
+                                ...(p.fillColor ? { fillColor: p.fillColor } : {}),
+                              },
+                              true
+                            );
+                          }
+                        }}
+                        className="h-6 px-1.5 bg-white border border-[#abadb3] hover:border-[#0078d7] rounded-xs text-[11px] text-zinc-900 outline-none cursor-pointer"
+                        title="Apply Contour Preset"
+                      >
+                        <option value="" disabled>
+                          Presets...
+                        </option>
+                        {CONTOUR_PRESETS.map((pr) => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Contour Direction: To Center | Inside | Outside */}
+                      <div className="flex items-center border border-[#abadb3] rounded-xs overflow-hidden bg-white">
+                        {(
+                          [
+                            { id: 'center', label: 'Center', title: 'Contour To Center' },
+                            { id: 'inside', label: 'Inside', title: 'Inside Contour' },
+                            { id: 'outside', label: 'Outside', title: 'Outside Contour' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onUpdateContour?.({ direction: opt.id }, true)}
+                            title={opt.title}
+                            className={`h-6 px-2 text-[11px] cursor-pointer transition-colors ${
+                              dir === opt.id
+                                ? 'bg-[#0078d7] text-white font-semibold'
+                                : 'text-zinc-800 hover:bg-[#e5f1fb]'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Contour Steps */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Steps:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          step={1}
+                          value={steps}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) {
+                              onUpdateContour?.({ steps: Math.max(1, Math.min(50, Math.round(val))) }, true);
+                            }
+                          }}
+                          className="w-12 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Number of Contour Steps (1–50)"
+                        />
+                      </label>
+
+                      {/* Contour Offset (px) */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Offset:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={250}
+                          step={1}
+                          value={offsetPx}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) {
+                              onUpdateContour?.({ offsetPx: Math.max(1, Math.min(250, val)) }, true);
+                            }
+                          }}
+                          className="w-13 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Contour Offset per step (px)"
+                        />
+                        <span className="text-[10px] opacity-70">px</span>
+                      </label>
+
+                      {/* Outline Color */}
+                      <label className="flex items-center gap-1 text-[11px]" title="Contour Outline Color">
+                        <span className="opacity-80">Outline:</span>
+                        <input
+                          type="color"
+                          value={outlineColor}
+                          onChange={(e) => onUpdateContour?.({ outlineColor: e.target.value }, true)}
+                          className="w-6 h-6 p-0 border border-[#abadb3] rounded-xs bg-white cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Fill Color */}
+                      <label className="flex items-center gap-1 text-[11px]" title="Contour Fill Color">
+                        <span className="opacity-80">Fill:</span>
+                        <input
+                          type="color"
+                          value={fillColor}
+                          onChange={(e) => onUpdateContour?.({ fillColor: e.target.value }, true)}
+                          className="w-6 h-6 p-0 border border-[#abadb3] rounded-xs bg-white cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Clear Contour */}
+                      <button
+                        type="button"
+                        disabled={!hasContour}
+                        onClick={() => onUpdateContour?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Remove Contour from selected object"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {activeTool === 'blend' && (() => {
+                  const blendCfg = (selectedObject as any)?.blendConfig?.params as
+                    | {
+                        steps?: number;
+                        colorMode?: BlendColorMode;
+                        accelObject?: number;
+                        accelColor?: number;
+                      }
+                    | undefined;
+                  const hasBlend = !!(selectedObject as any)?.blendConfig || !!(selectedObject as any)?.isBlendStep;
+                  const canBlendSelection =
+                    hasBlend ||
+                    (selectedObject?.type === 'activeselection' &&
+                      ((selectedObject as any).getObjects?.()?.length ?? 0) >= 2);
+                  const steps = Math.max(
+                    1,
+                    Math.min(50, Math.round(blendCfg?.steps ?? properties.blendSteps ?? DEFAULT_BLEND_PARAMS.steps))
+                  );
+                  const colorMode: BlendColorMode =
+                    blendCfg?.colorMode ?? properties.blendColorMode ?? DEFAULT_BLEND_PARAMS.colorMode;
+                  const accelObj = blendCfg?.accelObject ?? properties.blendAccelObject ?? DEFAULT_BLEND_PARAMS.accelObject;
+                  const accelCol = blendCfg?.accelColor ?? properties.blendAccelColor ?? DEFAULT_BLEND_PARAMS.accelColor;
+
+                  return (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Blend Steps */}
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Steps:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          step={1}
+                          value={steps}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!Number.isNaN(val)) {
+                              onUpdateBlend?.({ steps: Math.max(1, Math.min(50, Math.round(val))) }, true);
+                            }
+                          }}
+                          className="w-12 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                          title="Number of Blend Steps (1–50)"
+                        />
+                      </label>
+
+                      {/* Color Blend Progression Mode */}
+                      <div className="flex items-center border border-[#abadb3] rounded-xs overflow-hidden bg-white">
+                        {(
+                          [
+                            { id: 'direct', label: 'Direct', title: 'Direct Color Blend (Smooth RGB Match)' },
+                            { id: 'clockwise', label: 'CW', title: 'Clockwise Spectrum Blend' },
+                            { id: 'counterclockwise', label: 'CCW', title: 'Counterclockwise Spectrum Blend' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onUpdateBlend?.({ colorMode: opt.id }, true)}
+                            title={opt.title}
+                            className={`h-6 px-2 text-[11px] cursor-pointer transition-colors ${
+                              colorMode === opt.id
+                                ? 'bg-[#0078d7] text-white font-semibold'
+                                : 'text-zinc-800 hover:bg-[#e5f1fb]'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Object & Color Acceleration */}
+                      <div className="flex items-center gap-1 text-[11px]" title="Object Spacing Acceleration">
+                        <span className="opacity-80">Obj:</span>
+                        <input
+                          type="range"
+                          min={-100}
+                          max={100}
+                          step={5}
+                          value={accelObj}
+                          onChange={(e) => onUpdateBlend?.({ accelObject: Number(e.target.value) }, false)}
+                          onMouseUp={(e) =>
+                            onUpdateBlend?.({ accelObject: Number((e.target as HTMLInputElement).value) }, true)
+                          }
+                          className="w-14 h-1.5 accent-[#0078d7] cursor-pointer"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px]" title="Color Transition Acceleration">
+                        <span className="opacity-80">Color:</span>
+                        <input
+                          type="range"
+                          min={-100}
+                          max={100}
+                          step={5}
+                          value={accelCol}
+                          onChange={(e) => onUpdateBlend?.({ accelColor: Number(e.target.value) }, false)}
+                          onMouseUp={(e) =>
+                            onUpdateBlend?.({ accelColor: Number((e.target as HTMLInputElement).value) }, true)
+                          }
+                          className="w-14 h-1.5 accent-[#0078d7] cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Apply if 2 objects selected */}
+                      {!hasBlend && canBlendSelection && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateBlend?.({ steps }, true)}
+                          className="h-6 px-2 bg-[#0078d7] hover:bg-[#005a9e] text-white rounded-xs text-[11px] font-medium cursor-pointer"
+                          title="Blend the two selected objects"
+                        >
+                          Blend Selected
+                        </button>
+                      )}
+
+                      {/* Clear Blend */}
+                      <button
+                        type="button"
+                        disabled={!hasBlend}
+                        onClick={() => onUpdateBlend?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Remove Blend steps"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {activeTool === 'extrude' && (() => {
+                  const extCfg = (selectedObject as any)?.extrudeConfig?.params as
+                    | {
+                        extrudeType?: ExtrudeType;
+                        offsetX?: number;
+                        offsetY?: number;
+                        depth?: number;
+                        colorMode?: ExtrudeColorMode;
+                        solidColor?: string;
+                        shadeColor?: string;
+                        lightIntensity?: number;
+                        showOutline?: boolean;
+                      }
+                    | undefined;
+                  const hasExtrude = !!extCfg || !!(selectedObject as any)?.isExtrudeBody;
+                  const extType: ExtrudeType =
+                    extCfg?.extrudeType ?? properties.extrudeType ?? DEFAULT_EXTRUDE_PARAMS.extrudeType;
+                  const depth = Math.max(
+                    1,
+                    Math.min(95, Math.round(extCfg?.depth ?? properties.extrudeDepth ?? DEFAULT_EXTRUDE_PARAMS.depth))
+                  );
+                  const offsetX = Math.round(extCfg?.offsetX ?? properties.extrudeOffsetX ?? DEFAULT_EXTRUDE_PARAMS.offsetX);
+                  const offsetY = Math.round(extCfg?.offsetY ?? properties.extrudeOffsetY ?? DEFAULT_EXTRUDE_PARAMS.offsetY);
+                  const colorMode: ExtrudeColorMode =
+                    extCfg?.colorMode ?? properties.extrudeColorMode ?? DEFAULT_EXTRUDE_PARAMS.colorMode;
+                  const solidColor = normalizeExtrudeHex(
+                    extCfg?.solidColor ?? properties.extrudeColor,
+                    DEFAULT_EXTRUDE_PARAMS.solidColor
+                  );
+                  const shadeColor = normalizeExtrudeHex(
+                    extCfg?.shadeColor ?? properties.extrudeShadeColor,
+                    DEFAULT_EXTRUDE_PARAMS.shadeColor
+                  );
+                  const lightIntensity = Math.max(
+                    0,
+                    Math.min(100, Math.round(extCfg?.lightIntensity ?? properties.extrudeLight ?? DEFAULT_EXTRUDE_PARAMS.lightIntensity))
+                  );
+
+                  return (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Presets */}
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const p = EXTRUDE_PRESETS.find((pr) => pr.id === e.target.value);
+                          if (p) {
+                            onUpdateExtrude?.(p.params, true);
+                          }
+                        }}
+                        className="h-6 px-1.5 bg-white text-zinc-900 border border-[#abadb3] rounded-xs text-[11px] cursor-pointer outline-none"
+                        title="Extrude 3D Presets"
+                      >
+                        <option value="">Presets...</option>
+                        {EXTRUDE_PRESETS.map((pr) => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Projection Type */}
+                      <select
+                        value={extType}
+                        onChange={(e) =>
+                          onUpdateExtrude?.({ extrudeType: e.target.value as ExtrudeType }, true)
+                        }
+                        className="h-6 px-1.5 bg-white text-zinc-900 border border-[#abadb3] rounded-xs text-[11px] cursor-pointer outline-none"
+                        title="Extrude Projection Type"
+                      >
+                        <option value="small_back">Small Back</option>
+                        <option value="big_back">Big Back</option>
+                        <option value="back_parallel">Back Parallel</option>
+                        <option value="small_front">Small Front</option>
+                        <option value="big_front">Big Front</option>
+                        <option value="front_parallel">Front Parallel</option>
+                      </select>
+
+                      {/* Depth */}
+                      <label className="flex items-center gap-1 text-[11px]" title="Extrusion Depth (%)">
+                        <span className="opacity-80">Depth:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={95}
+                          step={1}
+                          value={depth}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isNaN(v)) {
+                              onUpdateExtrude?.({ depth: Math.max(1, Math.min(95, Math.round(v))) }, true);
+                            }
+                          }}
+                          className="w-12 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                        />
+                      </label>
+
+                      {/* Vanishing Point X / Y */}
+                      <label className="flex items-center gap-1 text-[11px]" title="Vanishing Point Offset X (px)">
+                        <span className="opacity-80">VP X:</span>
+                        <input
+                          type="number"
+                          min={-800}
+                          max={800}
+                          step={5}
+                          value={offsetX}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isNaN(v)) onUpdateExtrude?.({ offsetX: v }, true);
+                          }}
+                          className="w-14 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[11px]" title="Vanishing Point Offset Y (px)">
+                        <span className="opacity-80">Y:</span>
+                        <input
+                          type="number"
+                          min={-800}
+                          max={800}
+                          step={5}
+                          value={offsetY}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isNaN(v)) onUpdateExtrude?.({ offsetY: v }, true);
+                          }}
+                          className="w-14 h-6 px-1 text-right font-mono tabular-nums text-[11px] bg-white text-zinc-900 border border-[#abadb3] focus:border-[#0078d7] rounded-xs outline-none"
+                        />
+                      </label>
+
+                      {/* Color Mode */}
+                      <div className="flex items-center border border-[#abadb3] rounded-xs overflow-hidden bg-white">
+                        {(
+                          [
+                            { id: 'object_fill', label: 'Fill', title: 'Use Object Fill Shading' },
+                            { id: 'solid', label: 'Solid', title: 'Use Solid Color' },
+                            { id: 'shade', label: 'Shade', title: 'Use Color Shading (From -> To)' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onUpdateExtrude?.({ colorMode: opt.id }, true)}
+                            title={opt.title}
+                            className={`h-6 px-2 text-[11px] cursor-pointer transition-colors ${
+                              colorMode === opt.id
+                                ? 'bg-[#0078d7] text-white font-semibold'
+                                : 'text-zinc-800 hover:bg-[#e5f1fb]'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {colorMode !== 'object_fill' && (
+                        <label className="flex items-center gap-1 text-[11px]" title="Extrude Color">
+                          <input
+                            type="color"
+                            value={solidColor}
+                            onChange={(e) => onUpdateExtrude?.({ solidColor: e.target.value }, true)}
+                            className="w-6 h-6 p-0 border border-[#abadb3] rounded-xs bg-white cursor-pointer"
+                          />
+                        </label>
+                      )}
+                      {colorMode === 'shade' && (
+                        <label className="flex items-center gap-1 text-[11px]" title="Extrude Deep Shade Color">
+                          <span className="opacity-75">→</span>
+                          <input
+                            type="color"
+                            value={shadeColor}
+                            onChange={(e) => onUpdateExtrude?.({ shadeColor: e.target.value }, true)}
+                            className="w-6 h-6 p-0 border border-[#abadb3] rounded-xs bg-white cursor-pointer"
+                          />
+                        </label>
+                      )}
+
+                      {/* Lighting */}
+                      <div className="flex items-center gap-1 text-[11px]" title="3D Directional Light Intensity">
+                        <span className="opacity-80">Light:</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={lightIntensity}
+                          onChange={(e) => onUpdateExtrude?.({ lightIntensity: Number(e.target.value) }, false)}
+                          onMouseUp={(e) =>
+                            onUpdateExtrude?.({ lightIntensity: Number((e.target as HTMLInputElement).value) }, true)
+                          }
+                          className="w-14 h-1.5 accent-[#0078d7] cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Clear Extrude */}
+                      <button
+                        type="button"
+                        disabled={!hasExtrude}
+                        onClick={() => onUpdateExtrude?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Remove 3D Extrude from selected object"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {activeTool === 'envelope' && (() => {
+                  const envCfg = (selectedObject as any)?.envelopeConfig as
+                    | { mode?: EnvelopeMode }
+                    | undefined;
+                  const hasEnvelope = !!envCfg;
+                  const envMode: EnvelopeMode =
+                    envCfg?.mode ?? properties.envelopeMode ?? DEFAULT_ENVELOPE_MODE;
+                  const mirrorOpposite = !!properties.envelopeMirror;
+
+                  return (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Presets */}
+                      <select
+                        value=""
+                        disabled={!selectedObject}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            onUpdateEnvelope?.({ presetId: e.target.value }, true);
+                          }
+                        }}
+                        className="h-6 px-1.5 bg-white text-zinc-900 border border-[#abadb3] rounded-xs text-[11px] cursor-pointer outline-none disabled:opacity-45"
+                        title="Apply Envelope Preset Shape"
+                      >
+                        <option value="">Presets...</option>
+                        {ENVELOPE_PRESETS.map((pr) => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Envelope Curve Mode */}
+                      <div className="flex items-center border border-[#abadb3] rounded-xs overflow-hidden bg-white">
+                        {(
+                          [
+                            { id: 'straight', label: 'Straight' },
+                            { id: 'single_arc', label: 'Single Arc' },
+                            { id: 'double_arc', label: 'Double Arc' },
+                            { id: 'unconstrained', label: 'Unconstrained' },
+                          ] as { id: EnvelopeMode; label: string }[]
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onUpdateEnvelope?.({ mode: opt.id }, true)}
+                            className={`h-6 px-2 text-[11px] cursor-pointer border-r last:border-r-0 border-[#d4d6dc] ${
+                              envMode === opt.id
+                                ? 'bg-[#0078d7] text-white font-semibold'
+                                : 'bg-white text-zinc-800 hover:bg-[#e5f1fb]'
+                            }`}
+                            title={`Envelope ${opt.label} mode`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Symmetric Mirror Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateEnvelope?.({ mirrorOpposite: !mirrorOpposite }, false)}
+                        className={`h-6 px-2 border rounded-xs text-[11px] cursor-pointer ${
+                          mirrorOpposite
+                            ? 'bg-[#0078d7] text-white border-[#0064b6] font-semibold'
+                            : 'bg-white text-zinc-800 border-[#abadb3] hover:bg-[#e5f1fb]'
+                        }`}
+                        title="Mirror opposite edge symmetrically while dragging nodes (or hold Shift)"
+                      >
+                        Mirror Opposite
+                      </button>
+
+                      {/* Reset */}
+                      <button
+                        type="button"
+                        disabled={!hasEnvelope}
+                        onClick={() => onUpdateEnvelope?.({ reset: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Reset Envelope cage to rectangular shape"
+                      >
+                        Reset
+                      </button>
+
+                      {/* Clear Envelope */}
+                      <button
+                        type="button"
+                        disabled={!hasEnvelope}
+                        onClick={() => onUpdateEnvelope?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        title="Clear Envelope warp from selected object"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {activeTool === 'distort' && (
                   <button
                     onClick={() => {
-                      if (activeTool === 'distort') {
-                        onEffectAction?.('filter', { category: 'Distort', effectName: 'ZigZag...' });
-                      } else {
-                        onEffectAction?.(activeTool);
-                      }
+                      onEffectAction?.('filter', { category: 'Distort', effectName: 'ZigZag...' });
                     }}
                     className="px-2 h-6 bg-white border border-[#abadb3] hover:bg-[#e5f1fb] rounded-xs text-[11px] text-zinc-900 cursor-pointer shrink-0 font-medium"
                     title="Open Interactive Effect Settings Dialog"
@@ -6318,20 +7172,184 @@ export const NuraTopPanel: React.FC<NuraTopPanelProps> = ({
                   </button>
                 )}
 
-                <span className="ml-auto text-[10.5px] opacity-75 shrink-0">
+                {activeTool === 'block_shadow' && (() => {
+                  const bsCfg = (selectedObject as any)?.blockShadowConfig?.params as
+                    | Partial<BlockShadowParams>
+                    | undefined;
+                  const hasBlockShadow = !!bsCfg || !!(selectedObject as any)?.isBlockShadow;
+                  const bsColor = normalizeBlockShadowHex(
+                    bsCfg?.color ?? properties.blockShadowColor,
+                    DEFAULT_BLOCK_SHADOW_PARAMS.color
+                  );
+                  const overprint = bsCfg?.overprint ?? properties.blockShadowOverprint ?? DEFAULT_BLOCK_SHADOW_PARAMS.overprint;
+                  const simplify = bsCfg?.simplify ?? properties.blockShadowSimplify ?? DEFAULT_BLOCK_SHADOW_PARAMS.simplify;
+                  const removeHoles = bsCfg?.removeHoles ?? properties.blockShadowRemoveHoles ?? DEFAULT_BLOCK_SHADOW_PARAMS.removeHoles;
+                  const fromOutline = bsCfg?.fromOutline ?? properties.blockShadowFromOutline ?? DEFAULT_BLOCK_SHADOW_PARAMS.fromOutline;
+                  const expandEnabled = bsCfg?.expandEnabled ?? properties.blockShadowExpandEnabled ?? DEFAULT_BLOCK_SHADOW_PARAMS.expandEnabled;
+                  const expandPx = bsCfg?.expandPx ?? properties.blockShadowExpandPx ?? DEFAULT_BLOCK_SHADOW_PARAMS.expandPx;
+                  const expandDisp = pxToUnit(expandPx, pageConfig.units, pageConfig.units === 'px' ? 1 : 2);
+                  const expandStep = getFineStepForUnit(pageConfig.units);
+                  const unitSym = (UNITS_DATA[pageConfig.units] || UNITS_DATA.mm).symbol;
+
+                  return (
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                      {/* Block Shadow Color Picker */}
+                      <label
+                        className="flex items-center gap-1 h-6 px-1.5 bg-white border border-[#abadb3] rounded-xs cursor-pointer"
+                        title="Block Shadow Color"
+                      >
+                        <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" fill="none">
+                          <path d="M2.5 9.5L7.5 4.5L11.5 8.5L6.5 13.5L2.5 9.5Z" fill="#334155" />
+                          <path d="M12.5 10.5C12.5 10.5 14 12.2 14 13.2C14 14 13.3 14.5 12.5 14.5C11.7 14.5 11 14 11 13.2C11 12.2 12.5 10.5 12.5 10.5Z" fill="#f97316" />
+                        </svg>
+                        <input
+                          type="color"
+                          value={bsColor}
+                          onChange={(e) => onUpdateBlockShadow?.({ color: e.target.value }, true)}
+                          className="w-6 h-4 border border-zinc-400 cursor-pointer bg-transparent p-0"
+                        />
+                      </label>
+
+                      {/* Overprint Block Shadow */}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateBlockShadow?.({ overprint: !overprint }, true)}
+                        className={`h-6 px-1.5 border rounded-xs flex items-center gap-1 text-[11px] cursor-pointer ${
+                          overprint
+                            ? 'bg-[#cce4f7] border-[#0078d7] text-zinc-900 font-semibold'
+                            : 'bg-white border-[#abadb3] text-zinc-800 hover:bg-[#e5f1fb]'
+                        }`}
+                        title="Overprint Block Shadow"
+                      >
+                        <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none">
+                          <rect x="2.5" y="7" width="6.5" height="6.5" rx="3" transform="rotate(-45 2.5 7)" stroke="#334155" strokeWidth="1.4" fill="#334155" fillOpacity="0.8" />
+                          <rect x="6" y="4" width="6.5" height="6.5" rx="3" transform="rotate(-45 6 4)" stroke="#ea580c" strokeWidth="1.4" fill="#f97316" fillOpacity="0.85" />
+                        </svg>
+                      </button>
+
+                      <div className="h-4 w-[1px] bg-[#c2c5cb] mx-0.5" />
+
+                      {/* Simplify */}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateBlockShadow?.({ simplify: !simplify }, true)}
+                        className={`h-6 px-2 border rounded-xs flex items-center gap-1 text-[11px] cursor-pointer ${
+                          simplify
+                            ? 'bg-[#cce4f7] border-[#0078d7] text-zinc-900 font-semibold'
+                            : 'bg-white border-[#abadb3] text-zinc-800 hover:bg-[#e5f1fb]'
+                        }`}
+                        title="Simplify Block Shadow"
+                      >
+                        <span className="inline-block w-3 h-2.5 rounded-full bg-zinc-700 -rotate-45" />
+                        <span>Simplify</span>
+                      </button>
+
+                      {/* Remove Holes */}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateBlockShadow?.({ removeHoles: !removeHoles }, true)}
+                        className={`h-6 px-2 border rounded-xs flex items-center gap-1 text-[11px] cursor-pointer ${
+                          removeHoles
+                            ? 'bg-[#cce4f7] border-[#0078d7] text-zinc-900 font-semibold'
+                            : 'bg-white border-[#abadb3] text-zinc-800 hover:bg-[#e5f1fb]'
+                        }`}
+                        title="Remove Holes in Block Shadow"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-600 text-white text-[8px] font-bold flex items-center justify-center leading-none">-</span>
+                        <span>Remove Holes</span>
+                      </button>
+
+                      <div className="h-4 w-[1px] bg-[#c2c5cb] mx-0.5" />
+
+                      {/* Generate from Object Outline */}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateBlockShadow?.({ fromOutline: !fromOutline }, true)}
+                        className={`h-6 px-2 border rounded-xs flex items-center gap-1 text-[11px] cursor-pointer ${
+                          fromOutline
+                            ? 'bg-[#cce4f7] border-[#0078d7] text-zinc-900 font-semibold'
+                            : 'bg-white border-[#abadb3] text-zinc-800 hover:bg-[#e5f1fb]'
+                        }`}
+                        title="Generate from Object Outline"
+                      >
+                        <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-zinc-700 bg-white" />
+                        <span>Outline</span>
+                      </button>
+
+                      {/* Expand Block Shadow Toggle + Numeric Offset */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateBlockShadow?.(
+                              {
+                                expandEnabled: !expandEnabled,
+                                expandPx: !expandEnabled && expandPx === 0 ? fromDisplay(pageConfig.units === 'px' ? 4 : 1) : expandPx,
+                              },
+                              true
+                            )
+                          }
+                          className={`h-6 px-1.5 border rounded-xs flex items-center gap-1 text-[11px] cursor-pointer ${
+                            expandEnabled
+                              ? 'bg-[#cce4f7] border-[#0078d7] text-zinc-900 font-semibold'
+                              : 'bg-white border-[#abadb3] text-zinc-800 hover:bg-[#e5f1fb]'
+                          }`}
+                          title="Expand Block Shadow"
+                        >
+                          <span className="inline-block w-2.5 h-2.5 rounded-full border border-[#ea580c] bg-zinc-700" />
+                          <span>Expand</span>
+                        </button>
+                        <div className="flex items-center h-6 bg-white border border-[#abadb3] rounded-xs overflow-hidden">
+                          <input
+                            type="number"
+                            step={expandStep}
+                            min={0}
+                            value={Number(expandDisp.toFixed(pageConfig.units === 'px' ? 0 : 1))}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!Number.isNaN(v) && v >= 0) {
+                                const pxVal = fromDisplay(v);
+                                onUpdateBlockShadow?.({ expandEnabled: pxVal > 0, expandPx: pxVal }, true);
+                              }
+                            }}
+                            className="w-12 h-full px-1 text-[11px] text-zinc-900 outline-none font-mono tabular-nums text-right"
+                            title="Block Shadow Expand Width"
+                          />
+                          <span className="px-1 text-[10px] text-zinc-500 border-l border-[#e2e4e8]">
+                            {unitSym}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Clear Block Shadow */}
+                      <button
+                        type="button"
+                        disabled={!hasBlockShadow}
+                        onClick={() => onUpdateBlockShadow?.({ remove: true }, true)}
+                        className="h-6 px-2 bg-white border border-[#abadb3] hover:bg-[#fee2e2] hover:border-[#dc2626] text-zinc-900 rounded-xs text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1"
+                        title="Clear Block Shadow"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-600 text-white text-[8px] font-bold flex items-center justify-center leading-none">-</span>
+                        <span>Clear</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                <span className="ml-auto text-[10.5px] opacity-75 shrink-0 truncate max-w-[300px]">
                   {activeTool === 'shadow'
-                    ? 'Click any object on canvas to add a soft Drop Shadow'
+                    ? 'Drag directly from any object (or end handle ■) · Shift snaps 15°'
                     : activeTool === 'contour'
-                    ? 'Click any object to generate concentric Contour steps'
+                    ? 'Drag inward/outward from any object (or handle ■) · Shift snaps 2 px'
                     : activeTool === 'blend'
-                    ? 'Click any object to generate progressive Blend steps (or select 2 objects & use Effect Options)'
+                    ? 'Drag from first object to second object (or drag mid slider for steps)'
                     : activeTool === 'distort'
                     ? 'Click any vector shape to apply Push & Pull vector distortion'
                     : activeTool === 'envelope'
-                    ? 'Click any object to apply Envelope warp'
+                    ? 'Drag any corner □ or edge node ○ to warp · Shift mirrors opposite edge'
                     : activeTool === 'extrude'
-                    ? 'Click any object to project a 3D Extrusion'
-                    : 'Click any object to add a solid vector Block Shadow'}
+                    ? 'Drag from any object for 3D Extrude (or drag handle × / slider |) · Shift snaps 15°'
+                    : 'Drag directly from any object (or handle ■) for solid Block Shadow · Shift snaps 15°'}
                 </span>
               </div>
             );

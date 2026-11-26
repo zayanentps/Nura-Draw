@@ -196,6 +196,35 @@ export interface PropertyState {
   shadowBlur: number;
   shadowOffsetX: number;
   shadowOffsetY: number;
+  contourDirection?: 'inside' | 'center' | 'outside';
+  contourSteps?: number;
+  contourOffset?: number;
+  contourOutlineColor?: string;
+  contourFillColor?: string;
+  blendSteps?: number;
+  blendColorMode?: 'direct' | 'clockwise' | 'counterclockwise';
+  blendAccelObject?: number;
+  blendAccelColor?: number;
+  extrudeType?: 'small_back' | 'big_back' | 'back_parallel' | 'small_front' | 'big_front' | 'front_parallel';
+  extrudeDepth?: number;
+  extrudeOffsetX?: number;
+  extrudeOffsetY?: number;
+  extrudeColorMode?: 'object_fill' | 'solid' | 'shade';
+  extrudeColor?: string;
+  extrudeShadeColor?: string;
+  extrudeLight?: number;
+  extrudeOutline?: boolean;
+  envelopeMode?: 'straight' | 'single_arc' | 'double_arc' | 'unconstrained';
+  envelopeMirror?: boolean;
+  blockShadowOffsetX?: number;
+  blockShadowOffsetY?: number;
+  blockShadowColor?: string;
+  blockShadowSimplify?: boolean;
+  blockShadowRemoveHoles?: boolean;
+  blockShadowFromOutline?: boolean;
+  blockShadowExpandEnabled?: boolean;
+  blockShadowExpandPx?: number;
+  blockShadowOverprint?: boolean;
 }
 
 export interface ColorSwatch {

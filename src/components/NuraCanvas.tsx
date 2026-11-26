@@ -41,12 +41,7 @@ import {
   findNearestObjectSegment,
   formatDimensionValue,
   createConnectorObject,
-  applyBlockShadowToObject,
-  applyExtrudeToObject,
-  applyContourToObject,
-  applyBlendToObject,
   applyDistortToObject,
-  applyEnvelopeToObject,
 } from '../utils/canvasHelpers';
 import { reflowLinkedTextsForPath } from '../utils/fitTextToPath';
 import { sliceObjectByLineSegment, cropObjectToRectTight } from '../utils/vectorSplit';
@@ -88,6 +83,58 @@ import { socketService } from '../services/socketService';
 import { TopRuler, LeftRuler } from './Rulers';
 import { NuraContextMenu } from './NuraContextMenu';
 import type { ShapeOperation } from '../utils/shapingEngine';
+import {
+  applyShadowToTarget,
+  extractTargetShadowForUi,
+  formatShadowRgba,
+  getShadowMetrics,
+  normalizeAngleDeg,
+} from '../utils/shadowHelpers';
+import {
+  ContourDirection,
+  DEFAULT_CONTOUR_PARAMS,
+  applyContourParamsToTarget,
+  extractTargetContourForUi,
+  normalizeContourHex,
+  resolveContourParent,
+} from '../utils/contourHelpers';
+import {
+  BlendColorMode,
+  DEFAULT_BLEND_PARAMS,
+  applyBlendBetweenObjects,
+  refreshBlendIfLinked,
+  resolveBlendGroup,
+} from '../utils/blendHelpers';
+import {
+  ExtrudeColorMode,
+  ExtrudeType,
+  DEFAULT_EXTRUDE_PARAMS,
+  applyExtrudeParamsToTarget,
+  computeExtrudeProjection,
+  extractTargetExtrudeForUi,
+  refreshExtrudeIfLinked,
+  resolveExtrudeParent,
+} from '../utils/extrudeHelpers';
+import {
+  EnvelopeCage,
+  EnvelopeMode,
+  EnvelopeNodeId,
+  DEFAULT_ENVELOPE_MODE,
+  applyEnvelopeCageToTarget,
+  cloneEnvelopeCage,
+  computeEnvelopeCageSvgPath,
+  extractOrInitEnvelopeConfig,
+  moveEnvelopeCageNode,
+  refreshEnvelopeIfMoved,
+} from '../utils/envelopeHelpers';
+import {
+  BlockShadowParams,
+  DEFAULT_BLOCK_SHADOW_PARAMS,
+  applyBlockShadowParamsToTarget,
+  extractTargetBlockShadowForUi,
+  refreshBlockShadowIfLinked,
+  resolveBlockShadowParent,
+} from '../utils/blockShadowHelpers';
 
 const EYEDROPPER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 4.5a2.12 2.12 0 0 1 0 3l-2.1 2.1 1.1 1.1-1.4 1.4-1.5-1.5-7.4 7.4c-.4.4-.9.7-1.4.8l-3 .7.7-3c.1-.5.4-1 .8-1.4l7.4-7.4-1.5-1.5 1.4-1.4 1.1 1.1 2.1-2.1a2.12 2.12 0 0 1 3 0Z" fill="#ffffff" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 7.5 16.5 10.5" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(EYEDROPPER_SVG)}") 2 21, crosshair`;
@@ -860,6 +907,140 @@ function commandsToSvgD(cmds: any[][]): string {
   return cmds.map((c) => c.join(' ')).join(' ');
 }
 
+function renderGuidelineRotateControl(
+  ctx: CanvasRenderingContext2D,
+  left: number,
+  top: number,
+  _styleOverride: any,
+  fabricObject: fabric.FabricObject
+) {
+  const angleRad = (((fabricObject.angle || 0) * Math.PI) / 180);
+  const offsetDist = 26;
+  const pivotX = left - offsetDist * Math.sin(angleRad);
+  const pivotY = top + offsetDist * Math.cos(angleRad);
+
+  ctx.save();
+  // Stem connecting pivot dot on guideline to rotation handle
+  ctx.strokeStyle = '#e81123';
+  ctx.lineWidth = 1.25;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(pivotX, pivotY);
+  ctx.lineTo(left, top);
+  ctx.stroke();
+
+  // Center pivot ring on guideline
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#e81123';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(pivotX, pivotY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Rotation knob circle at handle tip
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#e81123';
+  ctx.lineWidth = 1.75;
+  ctx.beginPath();
+  ctx.arc(left, top, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner curved arrow dot
+  ctx.beginPath();
+  ctx.arc(left, top, 2.3, -Math.PI * 0.8, Math.PI * 0.55);
+  ctx.strokeStyle = '#e81123';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function configureGuidelineObject(obj: fabric.FabricObject, isSelected: boolean) {
+  const isLocked = !!(obj as any).isLocked;
+  (obj as any).isGuideline = true;
+  (obj as any).excludeFromExport = true;
+  obj.set({
+    fill: 'transparent',
+    stroke: isSelected ? '#e81123' : '#0078d7',
+    strokeUniform: true,
+    hasBorders: false,
+    hasControls: !isLocked,
+    lockMovementX: isLocked,
+    lockMovementY: isLocked,
+    lockScalingX: true,
+    lockScalingY: true,
+    padding: 6,
+    perPixelTargetFind: false,
+    objectCaching: false,
+    noScaleCache: true,
+  });
+  obj.controls = {
+    mtr: new fabric.Control({
+      x: 0,
+      y: -0.5,
+      offsetY: -26,
+      actionHandler: fabric.controlsUtils.rotationWithSnapping,
+      cursorStyleHandler: fabric.controlsUtils.rotationStyleHandler,
+      actionName: 'rotate',
+      withConnection: false,
+      sizeX: 16,
+      sizeY: 16,
+      touchSizeX: 22,
+      touchSizeY: 22,
+      render: renderGuidelineRotateControl,
+    }),
+  };
+}
+
+function syncGuidelineSelectionColors(canvas: fabric.Canvas) {
+  const active = canvas.getActiveObject();
+  const selectedSet = new Set<fabric.FabricObject>();
+  if (active) {
+    if (active.type === 'activeselection' && typeof (active as any).getObjects === 'function') {
+      for (const child of (active as any).getObjects()) {
+        selectedSet.add(child);
+      }
+    } else {
+      selectedSet.add(active);
+    }
+  }
+  let changed = false;
+  for (const obj of canvas.getObjects()) {
+    if ((obj as any).isGuideline) {
+      const isSelected = selectedSet.has(obj);
+      const targetColor = isSelected ? '#e81123' : '#0078d7';
+      if (obj.stroke !== targetColor || !obj.controls?.mtr) {
+        configureGuidelineObject(obj, isSelected);
+        obj.dirty = true;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    canvas.requestRenderAll();
+  }
+}
+
+function keepGuidelinesOnTop(canvas: fabric.Canvas) {
+  const objs = canvas.getObjects();
+  let seenGuideline = false;
+  let needsReorder = false;
+  for (const o of objs) {
+    if ((o as any).isGuideline) {
+      seenGuideline = true;
+    } else if (seenGuideline) {
+      needsReorder = true;
+      break;
+    }
+  }
+  if (!needsReorder) return;
+  const guides = objs.filter((o) => (o as any).isGuideline);
+  for (const g of guides) {
+    canvas.bringObjectToFront(g);
+  }
+}
+
 interface NuraCanvasProps {
   activeTool: ToolType;
   onSelectTool: (tool: ToolType) => void;
@@ -1083,6 +1264,12 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   const [hoverSnapMarker, setHoverSnapMarker] = useState<SnapMarker | null>(null);
   const [activePolarGuide, setActivePolarGuide] = useState<PolarGuide | null>(null);
   const [cadHud, setCadHud] = useState<{ x: number; y: number; text: string; swatches?: [string, string] } | null>(null);
+  const [guideDragPreview, setGuideDragPreview] = useState<{
+    orientation: 'horizontal' | 'vertical';
+    sceneX: number;
+    sceneY: number;
+    isInsideDesk: boolean;
+  } | null>(null);
   const [bezierRubberBand, setBezierRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const line2pStartRef = useRef<{ x: number; y: number } | null>(null);
   const [line2pPreview, setLine2pPreview] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -1090,6 +1277,8 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   const [editingDim, setEditingDim] = useState<{ id: string; name: string; expr: string; x: number; y: number } | null>(null);
   const parametricStateRef = useRef<ParametricState | undefined>(parametricState);
   parametricStateRef.current = parametricState;
+  const showGuidelinesRef = useRef<boolean>(showGuidelines);
+  showGuidelinesRef.current = showGuidelines;
 
   const viewQualityModeRef = useRef<ViewQualityMode>(viewQualityMode);
   viewQualityModeRef.current = viewQualityMode;
@@ -1298,6 +1487,464 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     setTargetOpacityLive(cur.target, cur.initialOpacity);
     setTransparencyPopup(null);
   }, [setTargetOpacityLive]);
+
+  // Interactive Drop Shadow Tool state & drag vector handle
+  interface ShadowOverlayState {
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    offsetX: number;
+    offsetY: number;
+    blur: number;
+    transparency: number;
+    colorHex: string;
+    hasShadow: boolean;
+  }
+  const [shadowOverlay, setShadowOverlay] = useState<ShadowOverlayState | null>(null);
+  const shadowOverlayRef = useRef<ShadowOverlayState | null>(null);
+  shadowOverlayRef.current = shadowOverlay;
+  const shadowDragRef = useRef<{
+    mode: 'from_object' | 'tip' | 'opacity';
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    startPt: { x: number; y: number };
+    blur: number;
+    transparency: number;
+    colorHex: string;
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncShadowOverlay = useCallback((target: fabric.FabricObject | null) => {
+    if (!target || (target as any).isGuideline || (target as any).isDimension) {
+      setShadowOverlay(null);
+      return;
+    }
+    const c = target.getCenterPoint ? target.getCenterPoint() : { x: target.left || 0, y: target.top || 0 };
+    const m = getShadowMetrics(extractTargetShadowForUi(target), {
+      color: propertiesRef.current.shadowColor,
+      blur: propertiesRef.current.shadowBlur,
+      offsetX: propertiesRef.current.shadowOffsetX,
+      offsetY: propertiesRef.current.shadowOffsetY,
+    });
+    setShadowOverlay({
+      target,
+      cx: c.x,
+      cy: c.y,
+      offsetX: m.offsetX,
+      offsetY: m.offsetY,
+      blur: m.blur,
+      transparency: m.transparency,
+      colorHex: m.colorHex,
+      hasShadow: m.hasShadow,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'shadow') return;
+    const target = shadowOverlayRef.current?.target || fabricRef.current?.getActiveObject() || null;
+    if (target && !(target as any).isGuideline && !(target as any).isDimension) {
+      syncShadowOverlay(target);
+    }
+  }, [
+    activeTool,
+    properties.shadowColor,
+    properties.shadowBlur,
+    properties.shadowOffsetX,
+    properties.shadowOffsetY,
+    syncShadowOverlay,
+  ]);
+
+  // Interactive Contour live overlay & drag state
+  interface ContourOverlayState {
+    target: fabric.FabricObject;
+    anchorX: number;
+    anchorY: number;
+    tipX: number;
+    tipY: number;
+    direction: ContourDirection;
+    steps: number;
+    offsetPx: number;
+    outlineColor: string;
+    fillColor: string;
+    hasContour: boolean;
+  }
+  const [contourOverlay, setContourOverlay] = useState<ContourOverlayState | null>(null);
+  const contourOverlayRef = useRef<ContourOverlayState | null>(null);
+  contourOverlayRef.current = contourOverlay;
+  const contourDragRef = useRef<{
+    mode: 'from_object' | 'tip' | 'steps';
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    halfW: number;
+    halfH: number;
+    anchorX: number;
+    anchorY: number;
+    startPt: { x: number; y: number };
+    direction: ContourDirection;
+    steps: number;
+    offsetPx: number;
+    outlineColor: string;
+    fillColor: string;
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncContourOverlay = useCallback((target: fabric.FabricObject | null) => {
+    const canvas = fabricRef.current;
+    if (!target || !canvas || (target as any).isGuideline || (target as any).isDimension) {
+      setContourOverlay(null);
+      return;
+    }
+    const actual = resolveContourParent(canvas, target) || target;
+    const c = actual.getCenterPoint ? actual.getCenterPoint() : { x: actual.left || 0, y: actual.top || 0 };
+    const halfW = Math.max(8, (actual.getScaledWidth ? actual.getScaledWidth() : 40) / 2);
+    const { hasContour, params } = extractTargetContourForUi(canvas, actual);
+    const anchorX = c.x + halfW;
+    const anchorY = c.y;
+    let tipX = anchorX;
+    if (hasContour) {
+      if (params.direction === 'outside') {
+        tipX = anchorX + params.steps * params.offsetPx;
+      } else if (params.direction === 'center') {
+        tipX = anchorX - Math.max(4, halfW - 4);
+      } else {
+        tipX = anchorX - Math.min(Math.max(4, halfW - 4), params.steps * params.offsetPx);
+      }
+    }
+    setContourOverlay({
+      target: actual,
+      anchorX,
+      anchorY,
+      tipX,
+      tipY: anchorY,
+      direction: params.direction,
+      steps: params.steps,
+      offsetPx: params.offsetPx,
+      outlineColor: params.outlineColor,
+      fillColor: params.fillColor,
+      hasContour,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'contour') return;
+    const canvas = fabricRef.current;
+    const target = contourOverlayRef.current?.target || canvas?.getActiveObject() || null;
+    if (target && !(target as any).isGuideline && !(target as any).isDimension) {
+      syncContourOverlay(target);
+    }
+  }, [
+    activeTool,
+    properties.contourDirection,
+    properties.contourSteps,
+    properties.contourOffset,
+    properties.contourOutlineColor,
+    properties.contourFillColor,
+    syncContourOverlay,
+  ]);
+
+  // Interactive Blend live overlay & drag state
+  type BlendOverlayState =
+    | {
+        mode: 'picking';
+        source: fabric.FabricObject;
+        hoverTarget: fabric.FabricObject | null;
+        startX: number;
+        startY: number;
+        endX: number;
+        endY: number;
+      }
+    | {
+        mode: 'linked';
+        blendId: string;
+        source: fabric.FabricObject;
+        target: fabric.FabricObject;
+        startX: number;
+        startY: number;
+        endX: number;
+        endY: number;
+        steps: number;
+        colorMode: BlendColorMode;
+        accelObject: number;
+        accelColor: number;
+      };
+  const [blendOverlay, setBlendOverlay] = useState<BlendOverlayState | null>(null);
+  const blendOverlayRef = useRef<BlendOverlayState | null>(null);
+  blendOverlayRef.current = blendOverlay;
+  const blendDragRef = useRef<{
+    mode: 'pick_end' | 'steps';
+    source: fabric.FabricObject;
+    target?: fabric.FabricObject;
+    blendId?: string;
+    startPt: { x: number; y: number };
+    hoverTarget: fabric.FabricObject | null;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    steps: number;
+    colorMode: BlendColorMode;
+    accelObject: number;
+    accelColor: number;
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncBlendOverlay = useCallback((obj: fabric.FabricObject | null) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !obj) {
+      setBlendOverlay(null);
+      return;
+    }
+    const resolved = resolveBlendGroup(canvas, obj);
+    if (!resolved) {
+      setBlendOverlay(null);
+      return;
+    }
+    const cA = resolved.source.getCenterPoint();
+    const cB = resolved.target.getCenterPoint();
+    setBlendOverlay({
+      mode: 'linked',
+      blendId: resolved.blendId,
+      source: resolved.source,
+      target: resolved.target,
+      startX: cA.x,
+      startY: cA.y,
+      endX: cB.x,
+      endY: cB.y,
+      steps: resolved.params.steps,
+      colorMode: resolved.params.colorMode,
+      accelObject: resolved.params.accelObject,
+      accelColor: resolved.params.accelColor,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'blend') return;
+    const canvas = fabricRef.current;
+    const cur =
+      (blendOverlayRef.current?.mode === 'linked' ? blendOverlayRef.current.source : null) ||
+      canvas?.getActiveObject() ||
+      null;
+    if (cur && !(cur as any).isGuideline && !(cur as any).isDimension) {
+      syncBlendOverlay(cur);
+    }
+  }, [
+    activeTool,
+    properties.blendSteps,
+    properties.blendColorMode,
+    properties.blendAccelObject,
+    properties.blendAccelColor,
+    syncBlendOverlay,
+  ]);
+
+  // Interactive Extrude 3D live overlay & drag state
+  interface ExtrudeOverlayState {
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    vpX: number;
+    vpY: number;
+    extrudeType: ExtrudeType;
+    offsetX: number;
+    offsetY: number;
+    depth: number;
+    colorMode: ExtrudeColorMode;
+    solidColor: string;
+    shadeColor: string;
+    lightIntensity: number;
+    showOutline: boolean;
+    hasExtrude: boolean;
+  }
+  const [extrudeOverlay, setExtrudeOverlay] = useState<ExtrudeOverlayState | null>(null);
+  const extrudeOverlayRef = useRef<ExtrudeOverlayState | null>(null);
+  extrudeOverlayRef.current = extrudeOverlay;
+  const extrudeDragRef = useRef<{
+    mode: 'from_object' | 'vp' | 'depth';
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    startPt: { x: number; y: number };
+    extrudeType: ExtrudeType;
+    offsetX: number;
+    offsetY: number;
+    depth: number;
+    colorMode: ExtrudeColorMode;
+    solidColor: string;
+    shadeColor: string;
+    lightIntensity: number;
+    showOutline: boolean;
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncExtrudeOverlay = useCallback((obj: fabric.FabricObject | null) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !obj || (obj as any).isGuideline || (obj as any).isDimension) {
+      setExtrudeOverlay(null);
+      return;
+    }
+    const actual = resolveExtrudeParent(canvas, obj) || obj;
+    const c = actual.getCenterPoint ? actual.getCenterPoint() : { x: actual.left || 0, y: actual.top || 0 };
+    const { hasExtrude, params } = extractTargetExtrudeForUi(canvas, actual);
+    const proj = computeExtrudeProjection(c, params);
+    setExtrudeOverlay({
+      target: actual,
+      cx: c.x,
+      cy: c.y,
+      vpX: hasExtrude ? proj.handleTip.x : c.x,
+      vpY: hasExtrude ? proj.handleTip.y : c.y,
+      extrudeType: params.extrudeType,
+      offsetX: params.offsetX,
+      offsetY: params.offsetY,
+      depth: params.depth,
+      colorMode: params.colorMode,
+      solidColor: params.solidColor,
+      shadeColor: params.shadeColor,
+      lightIntensity: params.lightIntensity,
+      showOutline: params.showOutline,
+      hasExtrude,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'extrude') return;
+    const canvas = fabricRef.current;
+    const cur = extrudeOverlayRef.current?.target || canvas?.getActiveObject() || null;
+    if (cur && !(cur as any).isGuideline && !(cur as any).isDimension) {
+      syncExtrudeOverlay(cur);
+    }
+  }, [
+    activeTool,
+    properties.extrudeType,
+    properties.extrudeDepth,
+    properties.extrudeOffsetX,
+    properties.extrudeOffsetY,
+    properties.extrudeColorMode,
+    properties.extrudeColor,
+    properties.extrudeShadeColor,
+    properties.extrudeLight,
+    syncExtrudeOverlay,
+  ]);
+
+  interface EnvelopeOverlayState {
+    target: fabric.FabricObject;
+    cage: EnvelopeCage;
+    mode: EnvelopeMode;
+    activeNode: EnvelopeNodeId;
+    hasEnvelope: boolean;
+  }
+  const [envelopeOverlay, setEnvelopeOverlay] = useState<EnvelopeOverlayState | null>(null);
+  const envelopeOverlayRef = useRef<EnvelopeOverlayState | null>(null);
+  envelopeOverlayRef.current = envelopeOverlay;
+  const envelopeDragRef = useRef<{
+    nodeId: EnvelopeNodeId;
+    target: fabric.FabricObject;
+    baseCage: EnvelopeCage;
+    cage: EnvelopeCage;
+    mode: EnvelopeMode;
+    startPt: { x: number; y: number };
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncEnvelopeOverlay = useCallback((obj: fabric.FabricObject | null) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !obj || (obj as any).isGuideline || (obj as any).isDimension || obj.type === 'activeselection') {
+      setEnvelopeOverlay(null);
+      return;
+    }
+    const cfg = extractOrInitEnvelopeConfig(obj);
+    setEnvelopeOverlay({
+      target: obj,
+      cage: cfg.cage,
+      mode: cfg.mode,
+      activeNode: cfg.activeNode || 'bl',
+      hasEnvelope: !!(obj as any).envelopeConfig,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'envelope') return;
+    const canvas = fabricRef.current;
+    const cur = envelopeOverlayRef.current?.target || canvas?.getActiveObject() || null;
+    if (cur && !(cur as any).isGuideline && !(cur as any).isDimension && cur.type !== 'activeselection') {
+      syncEnvelopeOverlay(cur);
+    }
+  }, [activeTool, properties.envelopeMode, syncEnvelopeOverlay]);
+
+  interface BlockShadowOverlayState {
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    offsetX: number;
+    offsetY: number;
+    color: string;
+    simplify: boolean;
+    removeHoles: boolean;
+    fromOutline: boolean;
+    expandEnabled: boolean;
+    expandPx: number;
+    overprint: boolean;
+    hasBlockShadow: boolean;
+  }
+  const [blockShadowOverlay, setBlockShadowOverlay] = useState<BlockShadowOverlayState | null>(null);
+  const blockShadowOverlayRef = useRef<BlockShadowOverlayState | null>(null);
+  blockShadowOverlayRef.current = blockShadowOverlay;
+  const blockShadowDragRef = useRef<{
+    mode: 'from_object' | 'tip';
+    target: fabric.FabricObject;
+    cx: number;
+    cy: number;
+    startPt: { x: number; y: number };
+    params: BlockShadowParams;
+    didDrag: boolean;
+  } | null>(null);
+
+  const syncBlockShadowOverlay = useCallback((obj: fabric.FabricObject | null) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !obj || (obj as any).isGuideline || (obj as any).isDimension || obj.type === 'activeselection') {
+      setBlockShadowOverlay(null);
+      return;
+    }
+    const actual = resolveBlockShadowParent(canvas, obj) || obj;
+    const c = actual.getCenterPoint ? actual.getCenterPoint() : { x: actual.left || 0, y: actual.top || 0 };
+    const { hasBlockShadow, params } = extractTargetBlockShadowForUi(canvas, actual);
+    setBlockShadowOverlay({
+      target: actual,
+      cx: c.x,
+      cy: c.y,
+      offsetX: hasBlockShadow ? params.offsetX : 0,
+      offsetY: hasBlockShadow ? params.offsetY : 0,
+      color: params.color,
+      simplify: params.simplify,
+      removeHoles: params.removeHoles,
+      fromOutline: params.fromOutline,
+      expandEnabled: params.expandEnabled,
+      expandPx: params.expandPx,
+      overprint: params.overprint,
+      hasBlockShadow,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'block_shadow') return;
+    const canvas = fabricRef.current;
+    const cur = blockShadowOverlayRef.current?.target || canvas?.getActiveObject() || null;
+    if (cur && !(cur as any).isGuideline && !(cur as any).isDimension && cur.type !== 'activeselection') {
+      syncBlockShadowOverlay(cur);
+    }
+  }, [
+    activeTool,
+    properties.blockShadowOffsetX,
+    properties.blockShadowOffsetY,
+    properties.blockShadowColor,
+    properties.blockShadowSimplify,
+    properties.blockShadowRemoveHoles,
+    properties.blockShadowFromOutline,
+    properties.blockShadowExpandEnabled,
+    properties.blockShadowExpandPx,
+    properties.blockShadowOverprint,
+    syncBlockShadowOverlay,
+  ]);
 
   // Panning with hand or middle mouse
   const isPanningRef = useRef<boolean>(false);
@@ -1536,6 +2183,51 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
               : isTextObj
               ? 0
               : 0.25;
+          const activeShadow = extractTargetShadowForUi(active);
+          const shadowPatch = activeShadow
+            ? (() => {
+                const m = getShadowMetrics(activeShadow);
+                return {
+                  shadowColor: m.rgba,
+                  shadowBlur: m.blur,
+                  shadowOffsetX: m.offsetX,
+                  shadowOffsetY: m.offsetY,
+                };
+              })()
+            : {};
+          const contourUi = extractTargetContourForUi(canvas, active);
+          const contourPatch = contourUi.hasContour
+            ? {
+                contourDirection: contourUi.params.direction,
+                contourSteps: contourUi.params.steps,
+                contourOffset: contourUi.params.offsetPx,
+                contourOutlineColor: contourUi.params.outlineColor,
+                contourFillColor: contourUi.params.fillColor,
+              }
+            : {};
+          const blendResolved = resolveBlendGroup(canvas, active);
+          const blendPatch = blendResolved
+            ? {
+                blendSteps: blendResolved.params.steps,
+                blendColorMode: blendResolved.params.colorMode,
+                blendAccelObject: blendResolved.params.accelObject,
+                blendAccelColor: blendResolved.params.accelColor,
+              }
+            : {};
+          const extrudeUi = extractTargetExtrudeForUi(canvas, active);
+          const extrudePatch = extrudeUi.hasExtrude
+            ? {
+                extrudeType: extrudeUi.params.extrudeType,
+                extrudeOffsetX: extrudeUi.params.offsetX,
+                extrudeOffsetY: extrudeUi.params.offsetY,
+                extrudeDepth: extrudeUi.params.depth,
+                extrudeColorMode: extrudeUi.params.colorMode,
+                extrudeColor: extrudeUi.params.solidColor,
+                extrudeShadeColor: extrudeUi.params.shadeColor,
+                extrudeLight: extrudeUi.params.lightIntensity,
+                extrudeOutline: extrudeUi.params.showOutline,
+              }
+            : {};
           onUpdateProperties({
             x: active.left || 0,
             y: active.top || 0,
@@ -1558,14 +2250,24 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
             charSpacing: (active as any).charSpacing || 0,
             lineHeight: (active as any).lineHeight || 1.16,
             textBackgroundColor: (active as any).textBackgroundColor || 'transparent',
+            ...shadowPatch,
+            ...contourPatch,
+            ...blendPatch,
+            ...extrudePatch,
           });
         }
       }
     };
 
-    canvas.on('selection:created', handleSelection);
-    canvas.on('selection:updated', handleSelection);
+    const handleSelectionWithGuides = () => {
+      syncGuidelineSelectionColors(canvas);
+      handleSelection();
+    };
+
+    canvas.on('selection:created', handleSelectionWithGuides);
+    canvas.on('selection:updated', handleSelectionWithGuides);
     canvas.on('selection:cleared', () => {
+      syncGuidelineSelectionColors(canvas);
       setActiveSnapLines([]);
       setActiveSnapMarkers([]);
       if (activeToolRef.current !== 'shape') {
@@ -1578,16 +2280,21 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     const handleModified = (e: any) => {
       setActiveSnapLines([]);
       setActiveSnapMarkers([]);
+      setCadHud(null);
       if (isRemoteUpdateRef.current) return;
       const target = e.target;
       if (target) {
         ensureObjectId(target);
         reflowLinkedTextsForPath(canvas, target);
+        void refreshBlendIfLinked(canvas, target);
+        void refreshExtrudeIfLinked(canvas, target);
+        void refreshBlockShadowIfLinked(canvas, target);
+        refreshEnvelopeIfMoved(target);
         handleSelection();
         // Broadcast to WebSocket peers
         socketService.sendCanvasUpdate(canvas.toJSON(), 'modify', (target as any).id, target.toJSON());
       }
-      onCanvasModified?.();
+      onCanvasModifiedRef.current?.();
       if (
         parametricStateRef.current?.showConstraints &&
         (parametricStateRef.current.dimConstraints.length > 0 ||
@@ -1598,10 +2305,47 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     };
 
     canvas.on('object:modified', handleModified);
+    (canvas as any).on('history:restored', () => {
+      setShadowOverlay(null);
+      setContourOverlay(null);
+      setBlendOverlay(null);
+      setExtrudeOverlay(null);
+      setEnvelopeOverlay(null);
+      setBlockShadowOverlay(null);
+      setDimOverlay(null);
+      setCadHud(null);
+      syncCurveOverlay(null);
+    });
+    (canvas as any).on('envelope:updated', (ev: any) => {
+      if (activeToolRef.current === 'envelope') {
+        const nextTarget = ev?.target || canvas.getActiveObject() || null;
+        if (nextTarget) {
+          syncEnvelopeOverlay(nextTarget);
+        }
+      }
+    });
+    (canvas as any).on('block_shadow:updated', (ev: any) => {
+      if (activeToolRef.current === 'block_shadow') {
+        const nextTarget = ev?.target || canvas.getActiveObject() || null;
+        if (nextTarget) {
+          syncBlockShadowOverlay(nextTarget);
+        }
+      }
+    });
     canvas.on('object:added', (e: any) => {
       onObjectsCountChange?.(canvas.getObjects().length);
       if (e.target) {
         disableObjectCaching(e.target);
+        if ((e.target as any).isGuideline) {
+          const isSel = canvas.getActiveObject() === e.target;
+          configureGuidelineObject(e.target, isSel);
+          e.target.set({
+            visible: showGuidelinesRef.current,
+            selectable: activeToolRef.current === 'pick' || activeToolRef.current === 'freehand_pick',
+            evented: activeToolRef.current === 'pick' || activeToolRef.current === 'freehand_pick',
+          });
+        }
+        keepGuidelinesOnTop(canvas);
         if (!isRemoteUpdateRef.current) {
           ensureObjectId(e.target);
         }
@@ -1628,15 +2372,15 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         canvas.setActiveObject(target);
         onSelectionChange(target);
         canvas.requestRenderAll();
-        onCanvasModified?.();
+        onCanvasModifiedRef.current?.();
         socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
       }
     });
 
-    // Non-destructive View Quality / Overprint / Rasterize render hooks
+    // Non-destructive View Quality / Overprint / Rasterize render hooks + Zoom-invariant Guidelines
     const renderBackup = new WeakMap<
       fabric.FabricObject,
-      { fill: any; stroke: any; strokeWidth: any; shadow: any; gco: any }
+      { fill: any; stroke: any; strokeWidth: any; strokeDashArray: any; shadow: any; gco: any }
     >();
     const collectLeafObjects = (objs: fabric.FabricObject[], out: fabric.FabricObject[] = []) => {
       for (const o of objs) {
@@ -1651,6 +2395,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       const mode = viewQualityModeRef.current;
       const overprint = simulateOverprintsRef.current;
       const rasterizeFx = rasterizeEffectsRef.current;
+      const curZoom = Math.max(0.01, zoomLevelRef.current || 1);
       const ctx = canvas.getContext();
       if (ctx) {
         ctx.imageSmoothingEnabled = mode !== 'normal' && mode !== 'pixels';
@@ -1661,19 +2406,36 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           disableObjectCaching(o);
         }
       }
-      if (mode !== 'wireframe' && !overprint && !rasterizeFx) return;
+      const needsModeBackup = mode === 'wireframe' || overprint || rasterizeFx;
       for (const o of all) {
+        if ((o as any).isGuideline) {
+          renderBackup.set(o, {
+            fill: o.fill,
+            stroke: o.stroke,
+            strokeWidth: o.strokeWidth,
+            strokeDashArray: (o as any).strokeDashArray,
+            shadow: o.shadow,
+            gco: o.globalCompositeOperation,
+          });
+          o.fill = 'transparent';
+          o.strokeWidth = 1.25 / curZoom;
+          (o as any).strokeDashArray = [6 / curZoom, 4 / curZoom];
+          o.shadow = null;
+          continue;
+        }
+        if (!needsModeBackup) continue;
         renderBackup.set(o, {
           fill: o.fill,
           stroke: o.stroke,
           strokeWidth: o.strokeWidth,
+          strokeDashArray: (o as any).strokeDashArray,
           shadow: o.shadow,
           gco: o.globalCompositeOperation,
         });
         if (mode === 'wireframe') {
           o.fill = 'transparent';
           o.stroke = '#1e293b';
-          o.strokeWidth = 1 / Math.max(0.01, zoomLevelRef.current);
+          o.strokeWidth = 1 / curZoom;
           o.shadow = null;
         } else {
           if (overprint) {
@@ -1698,6 +2460,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           o.fill = b.fill;
           o.stroke = b.stroke;
           o.strokeWidth = b.strokeWidth;
+          (o as any).strokeDashArray = b.strokeDashArray;
           o.shadow = b.shadow;
           o.globalCompositeOperation = b.gco;
           renderBackup.delete(o);
@@ -1721,6 +2484,27 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
   useEffect(() => {
     fabricRef.current?.requestRenderAll();
   }, [viewQualityMode, simulateOverprints, rasterizeComplexEffects]);
+
+  // Sync View -> Guidelines visibility to all canvas guideline objects
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    let changed = false;
+    const active = canvas.getActiveObject();
+    canvas.forEachObject((obj) => {
+      if ((obj as any).isGuideline && obj.visible !== showGuidelines) {
+        obj.set('visible', showGuidelines);
+        changed = true;
+      }
+    });
+    if (!showGuidelines && active && (active as any).isGuideline) {
+      canvas.discardActiveObject();
+      onSelectionChange(null);
+    }
+    if (changed) {
+      canvas.requestRenderAll();
+    }
+  }, [showGuidelines, onSelectionChange]);
 
   // Sync zoom and pan to fabric viewport transform
   useEffect(() => {
@@ -1888,6 +2672,26 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     if (activeTool !== 'transparency' && transparencyPopupRef.current) {
       commitAndCloseTransparencyPopup(false);
     }
+    if (activeTool !== 'shadow') {
+      shadowDragRef.current = null;
+      setShadowOverlay(null);
+    }
+    if (activeTool !== 'contour') {
+      contourDragRef.current = null;
+      setContourOverlay(null);
+    }
+    if (activeTool !== 'blend') {
+      blendDragRef.current = null;
+      setBlendOverlay(null);
+    }
+    if (activeTool !== 'envelope') {
+      envelopeDragRef.current = null;
+      setEnvelopeOverlay(null);
+    }
+    if (activeTool !== 'block_shadow') {
+      blockShadowDragRef.current = null;
+      setBlockShadowOverlay(null);
+    }
 
     canvas.isDrawingMode = activeTool === 'artistic_media';
 
@@ -1913,6 +2717,15 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
 
     const restoreLockState = (obj: fabric.FabricObject) => {
       const isLocked = !!(obj as any).isLocked;
+      if ((obj as any).isGuideline) {
+        obj.set({
+          hasControls: !isLocked,
+          hasBorders: false,
+          lockMovementX: isLocked,
+          lockMovementY: isLocked,
+        });
+        return;
+      }
       obj.set({
         hasControls: !isLocked,
         hasBorders: true,
@@ -1953,6 +2766,13 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         }
         curSelected.set({ selectable: true, evented: true });
         restoreLockState(curSelected);
+        if (curSelected.type === 'activeselection' && typeof curSelected.getObjects === 'function') {
+          curSelected.getObjects().forEach((subObj: fabric.FabricObject) => {
+            subObj.set({ selectable: true, evented: true });
+            restoreLockState(subObj);
+            subObj.setCoords();
+          });
+        }
         curSelected.setCoords();
         canvas.setActiveObject(curSelected);
         onSelectionChange(curSelected);
@@ -1965,6 +2785,11 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       setAddNodeHoverPreview(null);
       const curActive = canvas.getActiveObject();
       canvas.forEachObject((obj) => {
+        if ((obj as any).isGuideline) {
+          obj.selectable = false;
+          obj.evented = false;
+          return;
+        }
         obj.selectable = false;
         obj.evented = true;
         obj.set({
@@ -2011,7 +2836,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       canvas.discardActiveObject();
       canvas.forEachObject((obj) => {
         obj.selectable = false;
-        obj.evented = true; // eyedropper samples colors from objects
+        obj.evented = !(obj as any).isGuideline; // eyedropper samples colors from non-guideline objects
       });
       canvas.requestRenderAll();
     } else if (
@@ -2022,17 +2847,176 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       syncCurveOverlay(null);
       canvas.selection = false;
       canvas.defaultCursor = 'crosshair';
-      const preSelected = activeTool === 'transparency' ? canvas.getActiveObject() : null;
+      const preSelected =
+        activeTool === 'transparency' ||
+        activeTool === 'shadow' ||
+        activeTool === 'contour' ||
+        activeTool === 'blend' ||
+        activeTool === 'extrude' ||
+        activeTool === 'envelope' ||
+        activeTool === 'block_shadow'
+          ? canvas.getActiveObject()
+          : null;
       canvas.forEachObject((obj) => {
-        obj.selectable = false;
-        obj.evented = true; // object-modifying tools click existing objects
+        obj.set({
+          selectable: false,
+          evented: !(obj as any).isGuideline, // object-modifying tools click existing objects
+          hasControls: false,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
       });
-      if (activeTool === 'transparency' && preSelected && !(preSelected as any).isDimension) {
+      if (activeTool === 'transparency' && preSelected && !(preSelected as any).isDimension && !(preSelected as any).isGuideline) {
+        preSelected.set({
+          selectable: false,
+          hasControls: false,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
         openTransparencyPopupForTarget(preSelected);
+      } else if (activeTool === 'shadow' && preSelected && !(preSelected as any).isDimension && !(preSelected as any).isGuideline) {
+        preSelected.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: true,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        if (preSelected.type === 'activeselection' && typeof (preSelected as any).getObjects === 'function') {
+          (preSelected as any).getObjects().forEach((subObj: fabric.FabricObject) => {
+            subObj.set({
+              selectable: false,
+              hasControls: false,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+          });
+        }
+        canvas.setActiveObject(preSelected);
+        syncShadowOverlay(preSelected);
+        canvas.requestRenderAll();
+      } else if (activeTool === 'contour' && preSelected && !(preSelected as any).isDimension && !(preSelected as any).isGuideline) {
+        const resolved = resolveContourParent(canvas, preSelected) || preSelected;
+        resolved.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: true,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        if (resolved.type === 'activeselection' && typeof (resolved as any).getObjects === 'function') {
+          (resolved as any).getObjects().forEach((subObj: fabric.FabricObject) => {
+            subObj.set({
+              selectable: false,
+              hasControls: false,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+          });
+        }
+        canvas.setActiveObject(resolved);
+        syncContourOverlay(resolved);
+        canvas.requestRenderAll();
+      } else if (activeTool === 'blend' && preSelected && !(preSelected as any).isDimension && !(preSelected as any).isGuideline) {
+        preSelected.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: true,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        if (preSelected.type === 'activeselection' && typeof (preSelected as any).getObjects === 'function') {
+          (preSelected as any).getObjects().forEach((subObj: fabric.FabricObject) => {
+            subObj.set({
+              selectable: false,
+              hasControls: false,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+          });
+        }
+        canvas.setActiveObject(preSelected);
+        syncBlendOverlay(preSelected);
+        canvas.requestRenderAll();
+      } else if (activeTool === 'extrude' && preSelected && !(preSelected as any).isDimension && !(preSelected as any).isGuideline) {
+        const resolved = resolveExtrudeParent(canvas, preSelected) || preSelected;
+        resolved.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: true,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        if (resolved.type === 'activeselection' && typeof (resolved as any).getObjects === 'function') {
+          (resolved as any).getObjects().forEach((subObj: fabric.FabricObject) => {
+            subObj.set({
+              selectable: false,
+              hasControls: false,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+          });
+        }
+        canvas.setActiveObject(resolved);
+        syncExtrudeOverlay(resolved);
+        canvas.requestRenderAll();
+      } else if (
+        activeTool === 'envelope' &&
+        preSelected &&
+        !(preSelected as any).isDimension &&
+        !(preSelected as any).isGuideline &&
+        preSelected.type !== 'activeselection'
+      ) {
+        preSelected.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: false,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        canvas.setActiveObject(preSelected);
+        syncEnvelopeOverlay(preSelected);
+        canvas.requestRenderAll();
+      } else if (
+        activeTool === 'block_shadow' &&
+        preSelected &&
+        !(preSelected as any).isDimension &&
+        !(preSelected as any).isGuideline &&
+        preSelected.type !== 'activeselection'
+      ) {
+        const resolved = resolveBlockShadowParent(canvas, preSelected) || preSelected;
+        resolved.set({
+          selectable: false,
+          hasControls: false,
+          hasBorders: true,
+          lockMovementX: true,
+          lockMovementY: true,
+        });
+        canvas.setActiveObject(resolved);
+        syncBlockShadowOverlay(resolved);
+        canvas.requestRenderAll();
       } else {
         canvas.discardActiveObject();
         if (activeTool === 'transparency') {
           setTransparencyPopup(null);
+        }
+        if (activeTool === 'shadow') {
+          setShadowOverlay(null);
+        }
+        if (activeTool === 'contour') {
+          setContourOverlay(null);
+        }
+        if (activeTool === 'blend') {
+          setBlendOverlay(null);
+        }
+        if (activeTool === 'extrude') {
+          setExtrudeOverlay(null);
+        }
+        if (activeTool === 'envelope') {
+          setEnvelopeOverlay(null);
+        }
+        if (activeTool === 'block_shadow') {
+          setBlockShadowOverlay(null);
         }
         canvas.requestRenderAll();
       }
@@ -2247,7 +3231,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       const pageH = Math.max(40, cfg.height || 1123);
 
       if (mode === 'to_fit' && canvas) {
-        const objs = canvas.getObjects().filter((o) => o.visible !== false);
+        const objs = canvas.getObjects().filter((o) => o.visible !== false && !(o as any).isGuideline);
         if (objs.length > 0) {
           const curZoom = canvas.getZoom() || 1;
           const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
@@ -2501,43 +3485,66 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       }
 
       // Point-Grab Tracking: Detect if user grabbed a specific node/midpoint/center/quadrant of the target
-      // (Skip if clicking a resize/rotation handle transform corner)
+      // (Skip if clicking a resize/rotation handle transform corner; recenter guideline pivot on initial selection click)
       if ((activeTool === 'pick' || activeTool === 'freehand_pick') && opt.target && !opt.transform?.corner) {
         const target = opt.target;
-        if (typeof target.setCoords === 'function') target.setCoords();
-        const fPoints = extractObjectFeaturePoints(target);
-        let closest: { pt: any; dist: number } | null = null;
-        const grabRadius = Math.min(28, Math.max(8, 18 / curZoom));
-        for (const pt of fPoints) {
-          const d = Math.hypot(pt.x - pointer.x, pt.y - pointer.y);
-          if (d <= grabRadius && (!closest || d < closest.dist)) {
-            closest = { pt, dist: d };
+        if ((target as any).isGuideline) {
+          if (canvas.getActiveObject() !== target) {
+            const rad = ((target.angle || 0) * Math.PI) / 180;
+            const ux = Math.cos(rad);
+            const uy = Math.sin(rad);
+            const cx = target.left || 0;
+            const cy = target.top || 0;
+            const proj = (pointer.x - cx) * ux + (pointer.y - cy) * uy;
+            target.set({
+              left: cx + proj * ux,
+              top: cy + proj * uy,
+            });
+            target.setCoords();
           }
-        }
-        if (closest) {
-          grabbedPointRef.current = {
-            type: closest.pt.type,
-            label: closest.pt.label,
-            offsetFromOrigin: {
-              dx: closest.pt.x - (target.left || 0),
-              dy: closest.pt.y - (target.top || 0),
-            },
-          };
+          grabbedPointRef.current = null;
           dragOriginRef.current = {
             left: target.left || 0,
             top: target.top || 0,
-            baseX: closest.pt.x,
-            baseY: closest.pt.y,
+            baseX: target.left || 0,
+            baseY: target.top || 0,
           };
         } else {
-          grabbedPointRef.current = null;
-          const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
-          dragOriginRef.current = {
-            left: target.left || 0,
-            top: target.top || 0,
-            baseX: c.x,
-            baseY: c.y,
-          };
+          if (typeof target.setCoords === 'function') target.setCoords();
+          const fPoints = extractObjectFeaturePoints(target);
+          let closest: { pt: any; dist: number } | null = null;
+          const grabRadius = Math.min(28, Math.max(8, 18 / curZoom));
+          for (const pt of fPoints) {
+            const d = Math.hypot(pt.x - pointer.x, pt.y - pointer.y);
+            if (d <= grabRadius && (!closest || d < closest.dist)) {
+              closest = { pt, dist: d };
+            }
+          }
+          if (closest) {
+            grabbedPointRef.current = {
+              type: closest.pt.type,
+              label: closest.pt.label,
+              offsetFromOrigin: {
+                dx: closest.pt.x - (target.left || 0),
+                dy: closest.pt.y - (target.top || 0),
+              },
+            };
+            dragOriginRef.current = {
+              left: target.left || 0,
+              top: target.top || 0,
+              baseX: closest.pt.x,
+              baseY: closest.pt.y,
+            };
+          } else {
+            grabbedPointRef.current = null;
+            const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
+            dragOriginRef.current = {
+              left: target.left || 0,
+              top: target.top || 0,
+              baseX: c.x,
+              baseY: c.y,
+            };
+          }
         }
       } else {
         grabbedPointRef.current = null;
@@ -3476,55 +4483,399 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
-      // Drop Shadow Tool
+      // Interactive Drop Shadow Tool: Drag from any object OR drag vector end/opacity handles
       if (activeTool === 'shadow') {
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = shadowOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+
+        if (curOverlay) {
+          const tipX = curOverlay.cx + curOverlay.offsetX;
+          const tipY = curOverlay.cy + curOverlay.offsetY;
+          if (Math.hypot(pointer.x - tipX, pointer.y - tipY) <= hitTol) {
+            curOverlay.target.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: true,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            shadowDragRef.current = {
+              mode: 'tip',
+              target: curOverlay.target,
+              cx: curOverlay.cx,
+              cy: curOverlay.cy,
+              startPt: pointer,
+              blur: curOverlay.blur,
+              transparency: curOverlay.transparency,
+              colorHex: curOverlay.colorHex,
+              didDrag: true,
+            };
+            return;
+          }
+
+          const vecLen = Math.hypot(curOverlay.offsetX, curOverlay.offsetY);
+          if (curOverlay.hasShadow && vecLen * curZoom >= 42) {
+            const tFrac = Math.max(0.12, Math.min(0.88, 1 - curOverlay.transparency / 100));
+            const opX = curOverlay.cx + curOverlay.offsetX * tFrac;
+            const opY = curOverlay.cy + curOverlay.offsetY * tFrac;
+            if (Math.hypot(pointer.x - opX, pointer.y - opY) <= hitTol) {
+              curOverlay.target.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: true,
+                lockMovementX: true,
+                lockMovementY: true,
+              });
+              shadowDragRef.current = {
+                mode: 'opacity',
+                target: curOverlay.target,
+                cx: curOverlay.cx,
+                cy: curOverlay.cy,
+                startPt: pointer,
+                blur: curOverlay.blur,
+                transparency: curOverlay.transparency,
+                colorHex: curOverlay.colorHex,
+                didDrag: true,
+              };
+              return;
+            }
+          }
+        }
+
         const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          target.set(
-            'shadow',
-            new fabric.Shadow({
-              color: 'rgba(0,0,0,0.5)',
-              blur: 15,
-              offsetX: 8,
-              offsetY: 8,
-            })
-          );
-          (target as any).hasEffects = true;
+        if (target && !(target as any).isGuideline && !(target as any).isDimension) {
+          target.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
           canvas.setActiveObject(target);
-          canvas.requestRenderAll();
           onSelectionChange(target);
-          onCanvasModified?.();
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+
+          const m = getShadowMetrics(extractTargetShadowForUi(target), {
+            color: propertiesRef.current.shadowColor,
+            blur: propertiesRef.current.shadowBlur,
+            offsetX: propertiesRef.current.shadowOffsetX,
+            offsetY: propertiesRef.current.shadowOffsetY,
+          });
+          const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
+
+          shadowDragRef.current = {
+            mode: 'from_object',
+            target,
+            cx: c.x,
+            cy: c.y,
+            startPt: pointer,
+            blur: m.blur,
+            transparency: m.transparency,
+            colorHex: m.colorHex,
+            didDrag: false,
+          };
+
+          setShadowOverlay({
+            target,
+            cx: c.x,
+            cy: c.y,
+            offsetX: m.offsetX,
+            offsetY: m.offsetY,
+            blur: m.blur,
+            transparency: m.transparency,
+            colorHex: m.colorHex,
+            hasShadow: m.hasShadow,
+          });
+          onUpdateProperties({
+            shadowColor: m.rgba,
+            shadowBlur: m.blur,
+            shadowOffsetX: m.offsetX,
+            shadowOffsetY: m.offsetY,
+          });
+          canvas.requestRenderAll();
+        } else {
+          shadowDragRef.current = null;
+          setShadowOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
         }
-        onSelectTool('pick');
         return;
       }
 
-      // Contour Tool
+      // Interactive Contour Tool: Drag inward/outward from any object OR drag tip/steps handles
       if (activeTool === 'contour') {
-        const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          applyContourToObject(canvas, target, 3, 0.14, currentStroke || '#0078d7').then(() => {
-            onSelectionChange(target);
-            onCanvasModified?.();
-            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-          });
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = contourOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+
+        if (curOverlay) {
+          if (Math.hypot(pointer.x - curOverlay.tipX, pointer.y - curOverlay.tipY) <= hitTol) {
+            const actual = resolveContourParent(canvas, curOverlay.target) || curOverlay.target;
+            actual.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: true,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            const c = actual.getCenterPoint ? actual.getCenterPoint() : { x: actual.left || 0, y: actual.top || 0 };
+            const halfW = Math.max(8, (actual.getScaledWidth ? actual.getScaledWidth() : 40) / 2);
+            const halfH = Math.max(8, (actual.getScaledHeight ? actual.getScaledHeight() : 40) / 2);
+            contourDragRef.current = {
+              mode: 'tip',
+              target: actual,
+              cx: c.x,
+              cy: c.y,
+              halfW,
+              halfH,
+              anchorX: curOverlay.anchorX,
+              anchorY: curOverlay.anchorY,
+              startPt: pointer,
+              direction: curOverlay.direction,
+              steps: curOverlay.steps,
+              offsetPx: curOverlay.offsetPx,
+              outlineColor: curOverlay.outlineColor,
+              fillColor: curOverlay.fillColor,
+              didDrag: true,
+            };
+            return;
+          }
+
+          const vecLen = Math.hypot(curOverlay.tipX - curOverlay.anchorX, curOverlay.tipY - curOverlay.anchorY);
+          if (curOverlay.hasContour && vecLen * curZoom >= 42) {
+            const sFrac = Math.max(0.12, Math.min(0.88, curOverlay.steps / 20));
+            const midX = curOverlay.anchorX + (curOverlay.tipX - curOverlay.anchorX) * sFrac;
+            const midY = curOverlay.anchorY + (curOverlay.tipY - curOverlay.anchorY) * sFrac;
+            if (Math.hypot(pointer.x - midX, pointer.y - midY) <= hitTol) {
+              const actual = resolveContourParent(canvas, curOverlay.target) || curOverlay.target;
+              actual.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: true,
+                lockMovementX: true,
+                lockMovementY: true,
+              });
+              const c = actual.getCenterPoint ? actual.getCenterPoint() : { x: actual.left || 0, y: actual.top || 0 };
+              const halfW = Math.max(8, (actual.getScaledWidth ? actual.getScaledWidth() : 40) / 2);
+              const halfH = Math.max(8, (actual.getScaledHeight ? actual.getScaledHeight() : 40) / 2);
+              contourDragRef.current = {
+                mode: 'steps',
+                target: actual,
+                cx: c.x,
+                cy: c.y,
+                halfW,
+                halfH,
+                anchorX: curOverlay.anchorX,
+                anchorY: curOverlay.anchorY,
+                startPt: pointer,
+                direction: curOverlay.direction,
+                steps: curOverlay.steps,
+                offsetPx: curOverlay.offsetPx,
+                outlineColor: curOverlay.outlineColor,
+                fillColor: curOverlay.fillColor,
+                didDrag: true,
+              };
+              return;
+            }
+          }
         }
-        onSelectTool('pick');
+
+        const rawTarget = resolveEventTarget(canvas, evt, opt);
+        if (rawTarget && !(rawTarget as any).isGuideline && !(rawTarget as any).isDimension) {
+          const target = resolveContourParent(canvas, rawTarget) || rawTarget;
+          target.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+          canvas.setActiveObject(target);
+          onSelectionChange(target);
+
+          const ui = extractTargetContourForUi(canvas, target);
+          const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
+          const halfW = Math.max(8, (target.getScaledWidth ? target.getScaledWidth() : 40) / 2);
+          const halfH = Math.max(8, (target.getScaledHeight ? target.getScaledHeight() : 40) / 2);
+          const outlineColor = normalizeContourHex(
+            ui.hasContour ? ui.params.outlineColor : propertiesRef.current.contourOutlineColor || currentStroke,
+            DEFAULT_CONTOUR_PARAMS.outlineColor
+          );
+          const fillColor = normalizeContourHex(
+            ui.hasContour ? ui.params.fillColor : propertiesRef.current.contourFillColor,
+            DEFAULT_CONTOUR_PARAMS.fillColor
+          );
+          const direction = ui.hasContour
+            ? ui.params.direction
+            : (propertiesRef.current.contourDirection || DEFAULT_CONTOUR_PARAMS.direction);
+          const steps = ui.hasContour
+            ? ui.params.steps
+            : (propertiesRef.current.contourSteps ?? DEFAULT_CONTOUR_PARAMS.steps);
+          const offsetPx = ui.hasContour
+            ? ui.params.offsetPx
+            : (propertiesRef.current.contourOffset ?? DEFAULT_CONTOUR_PARAMS.offsetPx);
+
+          contourDragRef.current = {
+            mode: 'from_object',
+            target,
+            cx: c.x,
+            cy: c.y,
+            halfW,
+            halfH,
+            anchorX: c.x + halfW,
+            anchorY: c.y,
+            startPt: pointer,
+            direction,
+            steps,
+            offsetPx,
+            outlineColor,
+            fillColor,
+            didDrag: false,
+          };
+
+          syncContourOverlay(target);
+          onUpdateProperties({
+            contourDirection: direction,
+            contourSteps: steps,
+            contourOffset: offsetPx,
+            contourOutlineColor: outlineColor,
+            contourFillColor: fillColor,
+          });
+          canvas.requestRenderAll();
+        } else {
+          contourDragRef.current = null;
+          setContourOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
+        }
         return;
       }
 
-      // Blend Tool
+      // Interactive Blend Tool: Drag from Object A to Object B (or drag mid-line Steps slider)
       if (activeTool === 'blend') {
-        const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          applyBlendToObject(canvas, target, null, 4, 22, 22).then(() => {
-            onSelectionChange(target);
-            onCanvasModified?.();
-            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-          });
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = blendOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+
+        if (curOverlay && curOverlay.mode === 'linked') {
+          const vecLen = Math.hypot(curOverlay.endX - curOverlay.startX, curOverlay.endY - curOverlay.startY);
+          if (vecLen * curZoom >= 42) {
+            const sFrac = Math.max(0.12, Math.min(0.88, curOverlay.steps / 40));
+            const midX = curOverlay.startX + (curOverlay.endX - curOverlay.startX) * sFrac;
+            const midY = curOverlay.startY + (curOverlay.endY - curOverlay.startY) * sFrac;
+            if (Math.hypot(pointer.x - midX, pointer.y - midY) <= hitTol) {
+              curOverlay.source.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: true,
+                lockMovementX: true,
+                lockMovementY: true,
+              });
+              blendDragRef.current = {
+                mode: 'steps',
+                source: curOverlay.source,
+                target: curOverlay.target,
+                blendId: curOverlay.blendId,
+                startPt: pointer,
+                hoverTarget: null,
+                startX: curOverlay.startX,
+                startY: curOverlay.startY,
+                endX: curOverlay.endX,
+                endY: curOverlay.endY,
+                steps: curOverlay.steps,
+                colorMode: curOverlay.colorMode,
+                accelObject: curOverlay.accelObject,
+                accelColor: curOverlay.accelColor,
+                didDrag: true,
+              };
+              return;
+            }
+          }
         }
-        onSelectTool('pick');
+
+        const rawTarget = resolveEventTarget(canvas, evt, opt);
+        if (rawTarget && !(rawTarget as any).isGuideline && !(rawTarget as any).isDimension) {
+          const existing = resolveBlendGroup(canvas, rawTarget);
+          if ((rawTarget as any).isBlendStep && existing) {
+            existing.source.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: true,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            canvas.setActiveObject(existing.source);
+            onSelectionChange(existing.source);
+            syncBlendOverlay(existing.source);
+            onUpdateProperties({
+              blendSteps: existing.params.steps,
+              blendColorMode: existing.params.colorMode,
+              blendAccelObject: existing.params.accelObject,
+              blendAccelColor: existing.params.accelColor,
+            });
+            canvas.requestRenderAll();
+            return;
+          }
+
+          rawTarget.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+          canvas.setActiveObject(rawTarget);
+          onSelectionChange(rawTarget);
+
+          const cA = rawTarget.getCenterPoint();
+          const steps = existing?.params.steps ?? propertiesRef.current.blendSteps ?? DEFAULT_BLEND_PARAMS.steps;
+          const colorMode = existing?.params.colorMode ?? propertiesRef.current.blendColorMode ?? DEFAULT_BLEND_PARAMS.colorMode;
+          const accelObject = existing?.params.accelObject ?? propertiesRef.current.blendAccelObject ?? DEFAULT_BLEND_PARAMS.accelObject;
+          const accelColor = existing?.params.accelColor ?? propertiesRef.current.blendAccelColor ?? DEFAULT_BLEND_PARAMS.accelColor;
+
+          blendDragRef.current = {
+            mode: 'pick_end',
+            source: rawTarget,
+            startPt: pointer,
+            hoverTarget: null,
+            startX: cA.x,
+            startY: cA.y,
+            endX: pointer.x,
+            endY: pointer.y,
+            steps,
+            colorMode,
+            accelObject,
+            accelColor,
+            didDrag: false,
+          };
+
+          if (existing) {
+            syncBlendOverlay(existing.source);
+          } else {
+            setBlendOverlay(null);
+          }
+          onUpdateProperties({
+            blendSteps: steps,
+            blendColorMode: colorMode,
+            blendAccelObject: accelObject,
+            blendAccelColor: accelColor,
+          });
+          canvas.requestRenderAll();
+        } else {
+          blendDragRef.current = null;
+          setBlendOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
+        }
         return;
       }
 
@@ -3541,45 +4892,360 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
         return;
       }
 
-      // Envelope Tool
+      // Interactive 8-Node Envelope Tool: Drag corner □ or edge midpoint ○ handles to warp vector paths
       if (activeTool === 'envelope') {
-        const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          applyEnvelopeToObject(canvas, target, 'arc_top', 30);
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = envelopeOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+        const nodeOrder: EnvelopeNodeId[] = ['tl', 'tm', 'tr', 'rm', 'br', 'bm', 'bl', 'lm'];
+
+        if (curOverlay) {
+          let hitNode: EnvelopeNodeId | null = null;
+          let bestDist = Infinity;
+          for (const nid of nodeOrder) {
+            const pt = curOverlay.cage[nid];
+            const d = Math.hypot(pointer.x - pt.x, pointer.y - pt.y);
+            if (d <= hitTol && d < bestDist) {
+              bestDist = d;
+              hitNode = nid;
+            }
+          }
+          if (hitNode) {
+            curOverlay.target.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: false,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            envelopeDragRef.current = {
+              nodeId: hitNode,
+              target: curOverlay.target,
+              baseCage: cloneEnvelopeCage(curOverlay.cage),
+              cage: cloneEnvelopeCage(curOverlay.cage),
+              mode: curOverlay.mode,
+              startPt: pointer,
+              didDrag: false,
+            };
+            setEnvelopeOverlay({
+              ...curOverlay,
+              activeNode: hitNode,
+            });
+            return;
+          }
+        }
+
+        const rawTarget = resolveEventTarget(canvas, evt, opt);
+        if (
+          rawTarget &&
+          !(rawTarget as any).isGuideline &&
+          !(rawTarget as any).isDimension &&
+          rawTarget.type !== 'activeselection'
+        ) {
+          rawTarget.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: false,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+          canvas.setActiveObject(rawTarget);
+          onSelectionChange(rawTarget);
+          const cfg = extractOrInitEnvelopeConfig(rawTarget);
+          onUpdateProperties({
+            envelopeMode: cfg.mode || DEFAULT_ENVELOPE_MODE,
+          });
+          syncEnvelopeOverlay(rawTarget);
+          canvas.requestRenderAll();
+        } else {
+          envelopeDragRef.current = null;
+          setEnvelopeOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
+        }
+        return;
+      }
+
+      // Interactive Extrude 3D Tool: Drag directly from object or drag VP handle (×) / Depth slider (|)
+      if (activeTool === 'extrude') {
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = extrudeOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+
+        if (curOverlay) {
+          if (curOverlay.hasExtrude && Math.hypot(pointer.x - curOverlay.vpX, pointer.y - curOverlay.vpY) <= hitTol) {
+            const actual = resolveExtrudeParent(canvas, curOverlay.target) || curOverlay.target;
+            actual.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: true,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            extrudeDragRef.current = {
+              mode: 'vp',
+              target: actual,
+              cx: curOverlay.cx,
+              cy: curOverlay.cy,
+              startPt: pointer,
+              extrudeType: curOverlay.extrudeType,
+              offsetX: curOverlay.offsetX,
+              offsetY: curOverlay.offsetY,
+              depth: curOverlay.depth,
+              colorMode: curOverlay.colorMode,
+              solidColor: curOverlay.solidColor,
+              shadeColor: curOverlay.shadeColor,
+              lightIntensity: curOverlay.lightIntensity,
+              showOutline: curOverlay.showOutline,
+              didDrag: true,
+            };
+            return;
+          }
+
+          const vecLen = Math.hypot(curOverlay.vpX - curOverlay.cx, curOverlay.vpY - curOverlay.cy);
+          if (curOverlay.hasExtrude && vecLen * curZoom >= 42) {
+            const dFrac = Math.max(0.12, Math.min(0.88, curOverlay.depth / 100));
+            const midX = curOverlay.cx + (curOverlay.vpX - curOverlay.cx) * dFrac;
+            const midY = curOverlay.cy + (curOverlay.vpY - curOverlay.cy) * dFrac;
+            if (Math.hypot(pointer.x - midX, pointer.y - midY) <= hitTol) {
+              const actual = resolveExtrudeParent(canvas, curOverlay.target) || curOverlay.target;
+              actual.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: true,
+                lockMovementX: true,
+                lockMovementY: true,
+              });
+              extrudeDragRef.current = {
+                mode: 'depth',
+                target: actual,
+                cx: curOverlay.cx,
+                cy: curOverlay.cy,
+                startPt: pointer,
+                extrudeType: curOverlay.extrudeType,
+                offsetX: curOverlay.offsetX,
+                offsetY: curOverlay.offsetY,
+                depth: curOverlay.depth,
+                colorMode: curOverlay.colorMode,
+                solidColor: curOverlay.solidColor,
+                shadeColor: curOverlay.shadeColor,
+                lightIntensity: curOverlay.lightIntensity,
+                showOutline: curOverlay.showOutline,
+                didDrag: true,
+              };
+              return;
+            }
+          }
+        }
+
+        const rawTarget = resolveEventTarget(canvas, evt, opt);
+        if (rawTarget && !(rawTarget as any).isGuideline && !(rawTarget as any).isDimension) {
+          const target = resolveExtrudeParent(canvas, rawTarget) || rawTarget;
+          target.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
           canvas.setActiveObject(target);
           onSelectionChange(target);
-          onCanvasModified?.();
-          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-        }
-        onSelectTool('pick');
-        return;
-      }
 
-      // Extrude Tool
-      if (activeTool === 'extrude') {
-        const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          applyExtrudeToObject(canvas, target, 20, 20, currentStroke || '#334155').then(() => {
-            onSelectionChange(target);
-            onCanvasModified?.();
-            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          const ui = extractTargetExtrudeForUi(canvas, target);
+          const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
+          const extrudeType = ui.hasExtrude
+            ? ui.params.extrudeType
+            : (propertiesRef.current.extrudeType || DEFAULT_EXTRUDE_PARAMS.extrudeType);
+          const offsetX = ui.hasExtrude
+            ? ui.params.offsetX
+            : (propertiesRef.current.extrudeOffsetX ?? DEFAULT_EXTRUDE_PARAMS.offsetX);
+          const offsetY = ui.hasExtrude
+            ? ui.params.offsetY
+            : (propertiesRef.current.extrudeOffsetY ?? DEFAULT_EXTRUDE_PARAMS.offsetY);
+          const depth = ui.hasExtrude
+            ? ui.params.depth
+            : (propertiesRef.current.extrudeDepth ?? DEFAULT_EXTRUDE_PARAMS.depth);
+          const colorMode = ui.hasExtrude
+            ? ui.params.colorMode
+            : (propertiesRef.current.extrudeColorMode || DEFAULT_EXTRUDE_PARAMS.colorMode);
+          const solidColor = ui.hasExtrude
+            ? ui.params.solidColor
+            : (propertiesRef.current.extrudeColor || DEFAULT_EXTRUDE_PARAMS.solidColor);
+          const shadeColor = ui.hasExtrude
+            ? ui.params.shadeColor
+            : (propertiesRef.current.extrudeShadeColor || DEFAULT_EXTRUDE_PARAMS.shadeColor);
+          const lightIntensity = ui.hasExtrude
+            ? ui.params.lightIntensity
+            : (propertiesRef.current.extrudeLight ?? DEFAULT_EXTRUDE_PARAMS.lightIntensity);
+          const showOutline = ui.hasExtrude
+            ? ui.params.showOutline
+            : (propertiesRef.current.extrudeOutline ?? DEFAULT_EXTRUDE_PARAMS.showOutline);
+
+          extrudeDragRef.current = {
+            mode: 'from_object',
+            target,
+            cx: c.x,
+            cy: c.y,
+            startPt: pointer,
+            extrudeType,
+            offsetX,
+            offsetY,
+            depth,
+            colorMode,
+            solidColor,
+            shadeColor,
+            lightIntensity,
+            showOutline,
+            didDrag: false,
+          };
+
+          syncExtrudeOverlay(target);
+          onUpdateProperties({
+            extrudeType,
+            extrudeOffsetX: offsetX,
+            extrudeOffsetY: offsetY,
+            extrudeDepth: depth,
+            extrudeColorMode: colorMode,
+            extrudeColor: solidColor,
+            extrudeShadeColor: shadeColor,
+            extrudeLight: lightIntensity,
+            extrudeOutline: showOutline,
           });
+          canvas.requestRenderAll();
+        } else {
+          extrudeDragRef.current = null;
+          setExtrudeOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
         }
-        onSelectTool('pick');
         return;
       }
 
-      // Block Shadow Tool
+      // Interactive Block Shadow Tool: Drag directly from object or drag end handle (■)
       if (activeTool === 'block_shadow') {
-        const target = resolveEventTarget(canvas, evt, opt);
-        if (target) {
-          applyBlockShadowToObject(canvas, target, 16, 16, currentStroke || '#1e293b').then(() => {
-            onSelectionChange(target);
-            onCanvasModified?.();
-            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-          });
+        (canvas as any)._currentTransform = null;
+        (canvas as any)._groupSelector = null;
+
+        const curOverlay = blockShadowOverlayRef.current;
+        const hitTol = Math.max(8, 12 / curZoom);
+
+        if (curOverlay && curOverlay.hasBlockShadow) {
+          const tipX = curOverlay.cx + curOverlay.offsetX;
+          const tipY = curOverlay.cy + curOverlay.offsetY;
+          if (Math.hypot(pointer.x - tipX, pointer.y - tipY) <= hitTol) {
+            const actual = resolveBlockShadowParent(canvas, curOverlay.target) || curOverlay.target;
+            actual.set({
+              selectable: false,
+              hasControls: false,
+              hasBorders: true,
+              lockMovementX: true,
+              lockMovementY: true,
+            });
+            blockShadowDragRef.current = {
+              mode: 'tip',
+              target: actual,
+              cx: curOverlay.cx,
+              cy: curOverlay.cy,
+              startPt: pointer,
+              params: {
+                offsetX: curOverlay.offsetX,
+                offsetY: curOverlay.offsetY,
+                color: curOverlay.color,
+                simplify: curOverlay.simplify,
+                removeHoles: curOverlay.removeHoles,
+                fromOutline: curOverlay.fromOutline,
+                expandEnabled: curOverlay.expandEnabled,
+                expandPx: curOverlay.expandPx,
+                overprint: curOverlay.overprint,
+              },
+              didDrag: true,
+            };
+            return;
+          }
         }
-        onSelectTool('pick');
+
+        const rawTarget = resolveEventTarget(canvas, evt, opt);
+        if (
+          rawTarget &&
+          !(rawTarget as any).isGuideline &&
+          !(rawTarget as any).isDimension &&
+          rawTarget.type !== 'activeselection'
+        ) {
+          const target = resolveBlockShadowParent(canvas, rawTarget) || rawTarget;
+          target.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+          canvas.setActiveObject(target);
+          onSelectionChange(target);
+
+          const ui = extractTargetBlockShadowForUi(canvas, target);
+          const c = target.getCenterPoint ? target.getCenterPoint() : { x: pointer.x, y: pointer.y };
+          const params: BlockShadowParams = {
+            offsetX: ui.hasBlockShadow ? ui.params.offsetX : DEFAULT_BLOCK_SHADOW_PARAMS.offsetX,
+            offsetY: ui.hasBlockShadow ? ui.params.offsetY : DEFAULT_BLOCK_SHADOW_PARAMS.offsetY,
+            color: ui.hasBlockShadow
+              ? ui.params.color
+              : (propertiesRef.current.blockShadowColor || DEFAULT_BLOCK_SHADOW_PARAMS.color),
+            simplify: ui.hasBlockShadow
+              ? ui.params.simplify
+              : (propertiesRef.current.blockShadowSimplify ?? DEFAULT_BLOCK_SHADOW_PARAMS.simplify),
+            removeHoles: ui.hasBlockShadow
+              ? ui.params.removeHoles
+              : (propertiesRef.current.blockShadowRemoveHoles ?? DEFAULT_BLOCK_SHADOW_PARAMS.removeHoles),
+            fromOutline: ui.hasBlockShadow
+              ? ui.params.fromOutline
+              : (propertiesRef.current.blockShadowFromOutline ?? DEFAULT_BLOCK_SHADOW_PARAMS.fromOutline),
+            expandEnabled: ui.hasBlockShadow
+              ? ui.params.expandEnabled
+              : (propertiesRef.current.blockShadowExpandEnabled ?? DEFAULT_BLOCK_SHADOW_PARAMS.expandEnabled),
+            expandPx: ui.hasBlockShadow
+              ? ui.params.expandPx
+              : (propertiesRef.current.blockShadowExpandPx ?? DEFAULT_BLOCK_SHADOW_PARAMS.expandPx),
+            overprint: ui.hasBlockShadow
+              ? ui.params.overprint
+              : (propertiesRef.current.blockShadowOverprint ?? DEFAULT_BLOCK_SHADOW_PARAMS.overprint),
+          };
+
+          blockShadowDragRef.current = {
+            mode: 'from_object',
+            target,
+            cx: c.x,
+            cy: c.y,
+            startPt: pointer,
+            params,
+            didDrag: false,
+          };
+
+          syncBlockShadowOverlay(target);
+          onUpdateProperties({
+            blockShadowOffsetX: params.offsetX,
+            blockShadowOffsetY: params.offsetY,
+            blockShadowColor: params.color,
+            blockShadowSimplify: params.simplify,
+            blockShadowRemoveHoles: params.removeHoles,
+            blockShadowFromOutline: params.fromOutline,
+            blockShadowExpandEnabled: params.expandEnabled,
+            blockShadowExpandPx: params.expandPx,
+            blockShadowOverprint: params.overprint,
+          });
+          canvas.requestRenderAll();
+        } else {
+          blockShadowDragRef.current = null;
+          setBlockShadowOverlay(null);
+          canvas.discardActiveObject();
+          onSelectionChange(null);
+          canvas.requestRenderAll();
+        }
         return;
       }
 
@@ -4105,6 +5771,639 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           y: endPt.y,
           text: `${len} px  ∠ ${deg}°${polar.polarGuide?.isOrtho ? '  ORTHO' : ''}`,
         });
+        return;
+      }
+
+      // Interactive Drop Shadow drag (drag outward from object, drag tip handle, or drag opacity handle)
+      if (activeTool === 'shadow' && shadowDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = shadowDragRef.current;
+        if (st.mode === 'from_object' || st.mode === 'tip') {
+          let rawDx = st.mode === 'from_object' ? pointer.x - st.startPt.x : pointer.x - st.cx;
+          let rawDy = st.mode === 'from_object' ? pointer.y - st.startPt.y : pointer.y - st.cy;
+          if (!st.didDrag && Math.hypot(rawDx, rawDy) < 4 / curZoom) {
+            return;
+          }
+          st.didDrag = true;
+
+          if (evt.shiftKey) {
+            const d = Math.hypot(rawDx, rawDy);
+            const snapRad = (Math.round(((Math.atan2(rawDy, rawDx) * 180) / Math.PI) / 15) * 15 * Math.PI) / 180;
+            rawDx = Math.cos(snapRad) * d;
+            rawDy = Math.sin(snapRad) * d;
+          }
+
+          const offsetX = Math.round(rawDx * 10) / 10;
+          const offsetY = Math.round(rawDy * 10) / 10;
+
+          applyShadowToTarget(st.target, {
+            offsetX,
+            offsetY,
+            blur: st.blur,
+            transparency: st.transparency,
+            colorHex: st.colorHex,
+          });
+          canvas.requestRenderAll();
+
+          const rgba = formatShadowRgba(st.colorHex, Math.max(0, Math.min(1, 1 - st.transparency / 100)));
+          setShadowOverlay({
+            target: st.target,
+            cx: st.cx,
+            cy: st.cy,
+            offsetX,
+            offsetY,
+            blur: st.blur,
+            transparency: st.transparency,
+            colorHex: st.colorHex,
+            hasShadow: true,
+          });
+          onUpdateProperties({
+            shadowColor: rgba,
+            shadowBlur: st.blur,
+            shadowOffsetX: offsetX,
+            shadowOffsetY: offsetY,
+          });
+
+          const dist = Math.round(Math.hypot(offsetX, offsetY));
+          const deg = dist > 0 ? normalizeAngleDeg((Math.atan2(offsetY, offsetX) * 180) / Math.PI) : 0;
+          setCadHud({
+            x: st.cx + offsetX,
+            y: st.cy + offsetY,
+            text: `Dist: ${dist} px · ∠ ${deg}° · Transp: ${st.transparency}%`,
+          });
+          return;
+        }
+
+        if (st.mode === 'opacity') {
+          const curM = getShadowMetrics(extractTargetShadowForUi(st.target), {
+            color: propertiesRef.current.shadowColor,
+            blur: st.blur,
+            offsetX: propertiesRef.current.shadowOffsetX,
+            offsetY: propertiesRef.current.shadowOffsetY,
+          });
+          const vx = curM.offsetX;
+          const vy = curM.offsetY;
+          const lenSq = vx * vx + vy * vy;
+          const t =
+            lenSq > 1
+              ? Math.max(0, Math.min(1, ((pointer.x - st.cx) * vx + (pointer.y - st.cy) * vy) / lenSq))
+              : 0.5;
+          const nextTransp = Math.max(0, Math.min(100, Math.round((1 - t) * 100)));
+          st.transparency = nextTransp;
+
+          applyShadowToTarget(st.target, {
+            offsetX: vx,
+            offsetY: vy,
+            blur: st.blur,
+            transparency: nextTransp,
+            colorHex: st.colorHex,
+          });
+          canvas.requestRenderAll();
+
+          const rgba = formatShadowRgba(st.colorHex, Math.max(0, Math.min(1, 1 - nextTransp / 100)));
+          setShadowOverlay({
+            target: st.target,
+            cx: st.cx,
+            cy: st.cy,
+            offsetX: vx,
+            offsetY: vy,
+            blur: st.blur,
+            transparency: nextTransp,
+            colorHex: st.colorHex,
+            hasShadow: true,
+          });
+          onUpdateProperties({
+            shadowColor: rgba,
+            shadowBlur: st.blur,
+            shadowOffsetX: vx,
+            shadowOffsetY: vy,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: `Transparency: ${nextTransp}% (Opacity ${100 - nextTransp}%)`,
+          });
+          return;
+        }
+      }
+
+      // Interactive Contour drag (inward/outward from object, drag tip handle, or drag steps slider)
+      if (activeTool === 'contour' && contourDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = contourDragRef.current;
+
+        if (st.mode === 'from_object' || st.mode === 'tip') {
+          let nextDir: ContourDirection = st.direction;
+          let rawOffset = st.offsetPx;
+          let tipX = st.anchorX;
+
+          if (st.mode === 'from_object') {
+            const dragDist = Math.hypot(pointer.x - st.startPt.x, pointer.y - st.startPt.y);
+            if (!st.didDrag && dragDist < 4 / curZoom) {
+              return;
+            }
+            st.didDrag = true;
+
+            const startDist = Math.hypot(st.startPt.x - st.cx, st.startPt.y - st.cy);
+            const curDist = Math.hypot(pointer.x - st.cx, pointer.y - st.cy);
+            const radialDelta = curDist - startDist;
+
+            if (radialDelta >= 0) {
+              nextDir = 'outside';
+              rawOffset = Math.max(1, radialDelta) / Math.max(1, st.steps);
+            } else {
+              nextDir = st.direction === 'center' ? 'center' : 'inside';
+              rawOffset = Math.max(1, Math.min(Math.min(st.halfW, st.halfH) - 2, -radialDelta)) / Math.max(1, st.steps);
+            }
+          } else {
+            const signedReach = pointer.x - st.anchorX;
+            if (signedReach >= 0) {
+              nextDir = 'outside';
+              rawOffset = Math.max(1, signedReach) / Math.max(1, st.steps);
+            } else {
+              nextDir = st.direction === 'center' ? 'center' : 'inside';
+              rawOffset = Math.max(1, Math.min(Math.min(st.halfW, st.halfH) - 2, -signedReach)) / Math.max(1, st.steps);
+            }
+          }
+
+          if (evt.shiftKey) {
+            rawOffset = Math.max(2, Math.round(rawOffset / 2) * 2);
+          }
+          const offsetPx = Math.max(1, Math.min(200, Math.round(rawOffset * 10) / 10));
+          st.direction = nextDir;
+          st.offsetPx = offsetPx;
+
+          if (nextDir === 'outside') {
+            tipX = st.anchorX + st.steps * offsetPx;
+          } else if (nextDir === 'center') {
+            tipX = st.anchorX - Math.max(4, st.halfW - 4);
+          } else {
+            tipX = st.anchorX - Math.min(Math.max(4, st.halfW - 4), st.steps * offsetPx);
+          }
+
+          setContourOverlay({
+            target: st.target,
+            anchorX: st.anchorX,
+            anchorY: st.anchorY,
+            tipX,
+            tipY: st.anchorY,
+            direction: nextDir,
+            steps: st.steps,
+            offsetPx,
+            outlineColor: st.outlineColor,
+            fillColor: st.fillColor,
+            hasContour: true,
+          });
+          onUpdateProperties({
+            contourDirection: nextDir,
+            contourSteps: st.steps,
+            contourOffset: offsetPx,
+            contourOutlineColor: st.outlineColor,
+            contourFillColor: st.fillColor,
+          });
+          const dirLabel = nextDir === 'outside' ? 'Outside' : nextDir === 'center' ? 'Center' : 'Inside';
+          setCadHud({
+            x: tipX,
+            y: st.anchorY,
+            text: `${dirLabel} · ${st.steps} steps · ${offsetPx} px offset`,
+          });
+
+          void applyContourParamsToTarget(
+            canvas,
+            st.target,
+            {
+              direction: nextDir,
+              steps: st.steps,
+              offsetPx,
+              outlineColor: st.outlineColor,
+              fillColor: st.fillColor,
+            },
+            { lockForContourTool: true }
+          );
+          return;
+        }
+
+        if (st.mode === 'steps') {
+          const curOverlay = contourOverlayRef.current;
+          const tipX = curOverlay?.tipX ?? st.anchorX + st.steps * st.offsetPx;
+          const spanX = tipX - st.anchorX;
+          const t =
+            Math.abs(spanX) > 2
+              ? Math.max(0.05, Math.min(1, (pointer.x - st.anchorX) / spanX))
+              : 0.25;
+          const nextSteps = Math.max(1, Math.min(25, Math.round(t * 20)));
+          st.steps = nextSteps;
+
+          const nextTipX =
+            st.direction === 'outside'
+              ? st.anchorX + nextSteps * st.offsetPx
+              : st.direction === 'center'
+              ? st.anchorX - Math.max(4, st.halfW - 4)
+              : st.anchorX - Math.min(Math.max(4, st.halfW - 4), nextSteps * st.offsetPx);
+
+          setContourOverlay({
+            target: st.target,
+            anchorX: st.anchorX,
+            anchorY: st.anchorY,
+            tipX: nextTipX,
+            tipY: st.anchorY,
+            direction: st.direction,
+            steps: nextSteps,
+            offsetPx: st.offsetPx,
+            outlineColor: st.outlineColor,
+            fillColor: st.fillColor,
+            hasContour: true,
+          });
+          onUpdateProperties({
+            contourDirection: st.direction,
+            contourSteps: nextSteps,
+            contourOffset: st.offsetPx,
+            contourOutlineColor: st.outlineColor,
+            contourFillColor: st.fillColor,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: `Contour Steps: ${nextSteps} · Offset: ${st.offsetPx} px`,
+          });
+
+          void applyContourParamsToTarget(
+            canvas,
+            st.target,
+            {
+              direction: st.direction,
+              steps: nextSteps,
+              offsetPx: st.offsetPx,
+              outlineColor: st.outlineColor,
+              fillColor: st.fillColor,
+            },
+            { lockForContourTool: true }
+          );
+          return;
+        }
+      }
+
+      // Interactive Blend drag (drag from Object A to Object B, or drag mid-line Steps slider)
+      if (activeTool === 'blend' && blendDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = blendDragRef.current;
+
+        if (st.mode === 'pick_end') {
+          const dragDist = Math.hypot(pointer.x - st.startPt.x, pointer.y - st.startPt.y);
+          if (!st.didDrag && dragDist < 6 / curZoom) {
+            return;
+          }
+          st.didDrag = true;
+
+          // Find second target object under cursor (exclude start object, steps, guidelines, dimensions)
+          const objs = canvas.getObjects();
+          let hoverObj: fabric.FabricObject | null = null;
+          const scenePt = new fabric.Point(pointer.x, pointer.y);
+          for (let i = objs.length - 1; i >= 0; i--) {
+            const cand = objs[i];
+            if (
+              cand === st.source ||
+              !cand.visible ||
+              (cand as any).isGuideline ||
+              (cand as any).isDimension ||
+              (cand as any).isBlendStep
+            ) {
+              continue;
+            }
+            cand.setCoords();
+            if (cand.containsPoint(scenePt)) {
+              hoverObj = cand;
+              break;
+            }
+          }
+
+          st.hoverTarget = hoverObj;
+          const endCenter = hoverObj ? hoverObj.getCenterPoint() : pointer;
+          st.endX = endCenter.x;
+          st.endY = endCenter.y;
+
+          setBlendOverlay({
+            mode: 'picking',
+            source: st.source,
+            hoverTarget: hoverObj,
+            startX: st.startX,
+            startY: st.startY,
+            endX: endCenter.x,
+            endY: endCenter.y,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: hoverObj
+              ? `Release to Blend (${st.steps} steps)`
+              : 'Drag onto second object to Blend',
+          });
+          return;
+        }
+
+        if (st.mode === 'steps' && st.target) {
+          const vx = st.endX - st.startX;
+          const vy = st.endY - st.startY;
+          const lenSq = vx * vx + vy * vy;
+          const t =
+            lenSq > 1
+              ? Math.max(0.03, Math.min(1, ((pointer.x - st.startX) * vx + (pointer.y - st.startY) * vy) / lenSq))
+              : 0.5;
+          const nextSteps = Math.max(1, Math.min(40, Math.round(t * 40)));
+          st.steps = nextSteps;
+
+          setBlendOverlay({
+            mode: 'linked',
+            blendId: st.blendId || '',
+            source: st.source,
+            target: st.target,
+            startX: st.startX,
+            startY: st.startY,
+            endX: st.endX,
+            endY: st.endY,
+            steps: nextSteps,
+            colorMode: st.colorMode,
+            accelObject: st.accelObject,
+            accelColor: st.accelColor,
+          });
+          onUpdateProperties({
+            blendSteps: nextSteps,
+            blendColorMode: st.colorMode,
+            blendAccelObject: st.accelObject,
+            blendAccelColor: st.accelColor,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: `Blend Steps: ${nextSteps}`,
+          });
+
+          void applyBlendBetweenObjects(
+            canvas,
+            st.source,
+            st.target,
+            {
+              steps: nextSteps,
+              colorMode: st.colorMode,
+              accelObject: st.accelObject,
+              accelColor: st.accelColor,
+            },
+            { lockForBlendTool: true, blendId: st.blendId }
+          );
+          return;
+        }
+      }
+
+      // Interactive Extrude 3D drag (from object -> VP, VP handle ×, or mid-line Depth slider |)
+      if (activeTool === 'extrude' && extrudeDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = extrudeDragRef.current;
+
+        if (st.mode === 'from_object' || st.mode === 'vp') {
+          const dragDist = Math.hypot(pointer.x - st.startPt.x, pointer.y - st.startPt.y);
+          if (st.mode === 'from_object' && !st.didDrag && dragDist < 4 / curZoom) {
+            return;
+          }
+          st.didDrag = true;
+
+          let ox = pointer.x - st.cx;
+          let oy = pointer.y - st.cy;
+          if (evt.shiftKey) {
+            const dist = Math.hypot(ox, oy);
+            const rawDeg = (Math.atan2(oy, ox) * 180) / Math.PI;
+            const snappedDeg = Math.round(rawDeg / 15) * 15;
+            const rad = (snappedDeg * Math.PI) / 180;
+            ox = dist * Math.cos(rad);
+            oy = dist * Math.sin(rad);
+          }
+          ox = Math.round(ox * 10) / 10;
+          oy = Math.round(oy * 10) / 10;
+          st.offsetX = ox;
+          st.offsetY = oy;
+
+          const vpX = st.cx + ox;
+          const vpY = st.cy + oy;
+          setExtrudeOverlay({
+            target: st.target,
+            cx: st.cx,
+            cy: st.cy,
+            vpX,
+            vpY,
+            extrudeType: st.extrudeType,
+            offsetX: ox,
+            offsetY: oy,
+            depth: st.depth,
+            colorMode: st.colorMode,
+            solidColor: st.solidColor,
+            shadeColor: st.shadeColor,
+            lightIntensity: st.lightIntensity,
+            showOutline: st.showOutline,
+            hasExtrude: true,
+          });
+          onUpdateProperties({
+            extrudeType: st.extrudeType,
+            extrudeOffsetX: ox,
+            extrudeOffsetY: oy,
+            extrudeDepth: st.depth,
+            extrudeColorMode: st.colorMode,
+            extrudeColor: st.solidColor,
+            extrudeShadeColor: st.shadeColor,
+            extrudeLight: st.lightIntensity,
+            extrudeOutline: st.showOutline,
+          });
+          const len = Math.round(Math.hypot(ox, oy));
+          const deg = Math.round(normalizeAngleDeg((Math.atan2(oy, ox) * 180) / Math.PI));
+          setCadHud({
+            x: vpX,
+            y: vpY,
+            text: `3D Extrude · VP ${len} px  ∠ ${deg}° · Depth ${st.depth}%`,
+          });
+
+          void applyExtrudeParamsToTarget(
+            canvas,
+            st.target,
+            {
+              extrudeType: st.extrudeType,
+              offsetX: ox,
+              offsetY: oy,
+              depth: st.depth,
+              colorMode: st.colorMode,
+              solidColor: st.solidColor,
+              shadeColor: st.shadeColor,
+              lightIntensity: st.lightIntensity,
+              showOutline: st.showOutline,
+            },
+            { lockForExtrudeTool: true }
+          );
+          return;
+        }
+
+        if (st.mode === 'depth') {
+          const vx = st.offsetX;
+          const vy = st.offsetY;
+          const lenSq = vx * vx + vy * vy;
+          const t =
+            lenSq > 1
+              ? Math.max(0.05, Math.min(0.95, ((pointer.x - st.cx) * vx + (pointer.y - st.cy) * vy) / lenSq))
+              : 0.5;
+          const nextDepth = Math.max(5, Math.min(95, Math.round(t * 100)));
+          st.depth = nextDepth;
+
+          setExtrudeOverlay({
+            target: st.target,
+            cx: st.cx,
+            cy: st.cy,
+            vpX: st.cx + st.offsetX,
+            vpY: st.cy + st.offsetY,
+            extrudeType: st.extrudeType,
+            offsetX: st.offsetX,
+            offsetY: st.offsetY,
+            depth: nextDepth,
+            colorMode: st.colorMode,
+            solidColor: st.solidColor,
+            shadeColor: st.shadeColor,
+            lightIntensity: st.lightIntensity,
+            showOutline: st.showOutline,
+            hasExtrude: true,
+          });
+          onUpdateProperties({
+            extrudeDepth: nextDepth,
+          });
+          setCadHud({
+            x: pointer.x,
+            y: pointer.y,
+            text: `Extrude Depth: ${nextDepth}%`,
+          });
+
+          void applyExtrudeParamsToTarget(
+            canvas,
+            st.target,
+            {
+              extrudeType: st.extrudeType,
+              offsetX: st.offsetX,
+              offsetY: st.offsetY,
+              depth: nextDepth,
+              colorMode: st.colorMode,
+              solidColor: st.solidColor,
+              shadeColor: st.shadeColor,
+              lightIntensity: st.lightIntensity,
+              showOutline: st.showOutline,
+            },
+            { lockForExtrudeTool: true }
+          );
+          return;
+        }
+      }
+
+      // Interactive Envelope 8-Node Cage Drag
+      if (activeTool === 'envelope' && envelopeDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = envelopeDragRef.current;
+        const dragDist = Math.hypot(pointer.x - st.startPt.x, pointer.y - st.startPt.y);
+        if (!st.didDrag && dragDist < 2 / curZoom) {
+          return;
+        }
+        st.didDrag = true;
+
+        const mirrorOpposite = evt.shiftKey || !!propertiesRef.current.envelopeMirror;
+        const parallelOpposite = evt.ctrlKey || evt.metaKey;
+        const nextCage = moveEnvelopeCageNode(st.baseCage, st.nodeId, pointer, st.mode, {
+          mirrorOpposite,
+          parallelOpposite,
+        });
+        st.cage = nextCage;
+
+        const updatedTarget = applyEnvelopeCageToTarget(canvas, st.target, nextCage, st.mode, {
+          activeNode: st.nodeId,
+          lockForEnvelopeTool: true,
+        });
+        st.target = updatedTarget;
+
+        setEnvelopeOverlay({
+          target: updatedTarget,
+          cage: nextCage,
+          mode: st.mode,
+          activeNode: st.nodeId,
+          hasEnvelope: true,
+        });
+
+        const dx = Math.round(pointer.x - st.startPt.x);
+        const dy = Math.round(pointer.y - st.startPt.y);
+        const modeLabel =
+          st.mode === 'single_arc'
+            ? 'Single Arc'
+            : st.mode === 'double_arc'
+            ? 'Double Arc'
+            : st.mode === 'unconstrained'
+            ? 'Unconstrained'
+            : 'Straight';
+        setCadHud({
+          x: pointer.x,
+          y: pointer.y,
+          text: `Envelope (${modeLabel}) · Δ ${dx}, ${dy} px${mirrorOpposite ? ' · Mirror' : ''}`,
+        });
+        return;
+      }
+
+      // Interactive Block Shadow drag (from object or tip handle ■)
+      if (activeTool === 'block_shadow' && blockShadowDragRef.current) {
+        (canvas as any)._currentTransform = null;
+        const st = blockShadowDragRef.current;
+        const dragDist = Math.hypot(pointer.x - st.startPt.x, pointer.y - st.startPt.y);
+        if (st.mode === 'from_object' && !st.didDrag && dragDist < 4 / curZoom) {
+          return;
+        }
+        st.didDrag = true;
+
+        let ox = st.mode === 'tip' ? pointer.x - st.cx : pointer.x - st.startPt.x;
+        let oy = st.mode === 'tip' ? pointer.y - st.cy : pointer.y - st.startPt.y;
+        if (evt.shiftKey) {
+          const dist = Math.hypot(ox, oy);
+          const rawDeg = (Math.atan2(oy, ox) * 180) / Math.PI;
+          const snappedDeg = Math.round(rawDeg / 15) * 15;
+          const rad = (snappedDeg * Math.PI) / 180;
+          ox = dist * Math.cos(rad);
+          oy = dist * Math.sin(rad);
+        }
+        ox = Math.round(ox * 10) / 10;
+        oy = Math.round(oy * 10) / 10;
+        st.params.offsetX = ox;
+        st.params.offsetY = oy;
+
+        setBlockShadowOverlay({
+          target: st.target,
+          cx: st.cx,
+          cy: st.cy,
+          offsetX: ox,
+          offsetY: oy,
+          color: st.params.color,
+          simplify: st.params.simplify,
+          removeHoles: st.params.removeHoles,
+          fromOutline: st.params.fromOutline,
+          expandEnabled: st.params.expandEnabled,
+          expandPx: st.params.expandPx,
+          overprint: st.params.overprint,
+          hasBlockShadow: true,
+        });
+        onUpdateProperties({
+          blockShadowOffsetX: ox,
+          blockShadowOffsetY: oy,
+        });
+
+        const len = Math.round(Math.hypot(ox, oy));
+        const deg = Math.round(normalizeAngleDeg((Math.atan2(oy, ox) * 180) / Math.PI));
+        setCadHud({
+          x: st.cx + ox,
+          y: st.cy + oy,
+          text: `Block Shadow · ${len} px  ∠ ${deg}°`,
+        });
+
+        void applyBlockShadowParamsToTarget(
+          canvas,
+          st.target,
+          st.params,
+          { lockForBlockShadowTool: true }
+        );
         return;
       }
 
@@ -4788,6 +7087,250 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
       setActiveSnapMarkers([]);
       setActivePolarGuide(null);
       setCadHud(null);
+
+      // Finalize Interactive Drop Shadow drag (or apply default shadow on click if target had none)
+      if (activeTool === 'shadow' && shadowDragRef.current) {
+        const st = shadowDragRef.current;
+        shadowDragRef.current = null;
+        let mutated = st.didDrag;
+        if (!st.didDrag && st.mode === 'from_object' && !extractTargetShadowForUi(st.target)) {
+          const defOx = 10;
+          const defOy = 10;
+          applyShadowToTarget(st.target, {
+            offsetX: defOx,
+            offsetY: defOy,
+            blur: st.blur,
+            transparency: st.transparency,
+            colorHex: st.colorHex,
+          });
+          const rgba = formatShadowRgba(st.colorHex, Math.max(0, Math.min(1, 1 - st.transparency / 100)));
+          onUpdateProperties({
+            shadowColor: rgba,
+            shadowBlur: st.blur,
+            shadowOffsetX: defOx,
+            shadowOffsetY: defOy,
+          });
+          mutated = true;
+        }
+        canvas.requestRenderAll();
+        syncShadowOverlay(st.target);
+        if (mutated) {
+          onCanvasModified?.();
+          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+        }
+        return;
+      }
+
+      // Finalize Interactive Contour drag (or apply default 3-step contour on click if target had none)
+      if (activeTool === 'contour' && contourDragRef.current) {
+        const st = contourDragRef.current;
+        contourDragRef.current = null;
+        const alreadyHas = extractTargetContourForUi(canvas, st.target).hasContour;
+        if (!st.didDrag && st.mode === 'from_object' && !alreadyHas) {
+          const defSteps = st.steps || DEFAULT_CONTOUR_PARAMS.steps;
+          const defOffset = st.offsetPx || DEFAULT_CONTOUR_PARAMS.offsetPx;
+          void applyContourParamsToTarget(
+            canvas,
+            st.target,
+            {
+              direction: st.direction || 'outside',
+              steps: defSteps,
+              offsetPx: defOffset,
+              outlineColor: st.outlineColor,
+              fillColor: st.fillColor,
+            },
+            { lockForContourTool: true }
+          ).then((actual) => {
+            onUpdateProperties({
+              contourDirection: st.direction || 'outside',
+              contourSteps: defSteps,
+              contourOffset: defOffset,
+              contourOutlineColor: st.outlineColor,
+              contourFillColor: st.fillColor,
+            });
+            syncContourOverlay(actual);
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          });
+        } else if (st.didDrag) {
+          void applyContourParamsToTarget(
+            canvas,
+            st.target,
+            {
+              direction: st.direction,
+              steps: st.steps,
+              offsetPx: st.offsetPx,
+              outlineColor: st.outlineColor,
+              fillColor: st.fillColor,
+            },
+            { lockForContourTool: true }
+          ).then((actual) => {
+            syncContourOverlay(actual);
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          });
+        } else {
+          syncContourOverlay(st.target);
+        }
+        return;
+      }
+
+      // Finalize Interactive Blend drag (between Object A -> Object B, or Steps slider)
+      if (activeTool === 'blend' && blendDragRef.current) {
+        const st = blendDragRef.current;
+        blendDragRef.current = null;
+        if (st.mode === 'pick_end' && st.didDrag && st.hoverTarget && st.hoverTarget !== st.source) {
+          const targetObj = st.hoverTarget;
+          void applyBlendBetweenObjects(
+            canvas,
+            st.source,
+            targetObj,
+            {
+              steps: st.steps,
+              colorMode: st.colorMode,
+              accelObject: st.accelObject,
+              accelColor: st.accelColor,
+            },
+            { lockForBlendTool: true }
+          ).then((res) => {
+            if (res) {
+              canvas.setActiveObject(res.source);
+              onSelectionChange(res.source);
+              onUpdateProperties({
+                blendSteps: res.params.steps,
+                blendColorMode: res.params.colorMode,
+                blendAccelObject: res.params.accelObject,
+                blendAccelColor: res.params.accelColor,
+              });
+              syncBlendOverlay(res.source);
+              onCanvasModified?.();
+              socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+            }
+          });
+        } else if (st.mode === 'steps' && st.target) {
+          void applyBlendBetweenObjects(
+            canvas,
+            st.source,
+            st.target,
+            {
+              steps: st.steps,
+              colorMode: st.colorMode,
+              accelObject: st.accelObject,
+              accelColor: st.accelColor,
+            },
+            { lockForBlendTool: true, blendId: st.blendId }
+          ).then((res) => {
+            if (res) {
+              syncBlendOverlay(res.source);
+              onCanvasModified?.();
+              socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+            }
+          });
+        } else {
+          syncBlendOverlay(st.source);
+        }
+        return;
+      }
+
+      // Finalize Interactive Extrude 3D drag (or apply default 3D extrusion on single click if none)
+      if (activeTool === 'extrude' && extrudeDragRef.current) {
+        const st = extrudeDragRef.current;
+        extrudeDragRef.current = null;
+        const alreadyHas = extractTargetExtrudeForUi(canvas, st.target).hasExtrude;
+        if (!st.didDrag && st.mode === 'from_object' && !alreadyHas) {
+          void applyExtrudeParamsToTarget(
+            canvas,
+            st.target,
+            {
+              extrudeType: st.extrudeType,
+              offsetX: st.offsetX,
+              offsetY: st.offsetY,
+              depth: st.depth,
+              colorMode: st.colorMode,
+              solidColor: st.solidColor,
+              shadeColor: st.shadeColor,
+              lightIntensity: st.lightIntensity,
+              showOutline: st.showOutline,
+            },
+            { lockForExtrudeTool: true }
+          ).then((actual) => {
+            onUpdateProperties({
+              extrudeType: st.extrudeType,
+              extrudeOffsetX: st.offsetX,
+              extrudeOffsetY: st.offsetY,
+              extrudeDepth: st.depth,
+              extrudeColorMode: st.colorMode,
+              extrudeColor: st.solidColor,
+              extrudeShadeColor: st.shadeColor,
+              extrudeLight: st.lightIntensity,
+              extrudeOutline: st.showOutline,
+            });
+            syncExtrudeOverlay(actual);
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          });
+        } else {
+          syncExtrudeOverlay(st.target);
+          if (st.didDrag) {
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          }
+        }
+        return;
+      }
+
+      // Finalize Interactive Envelope 8-node drag
+      if (activeTool === 'envelope' && envelopeDragRef.current) {
+        const st = envelopeDragRef.current;
+        envelopeDragRef.current = null;
+        setCadHud(null);
+        if (st.didDrag) {
+          canvas.setActiveObject(st.target);
+          onSelectionChange(st.target);
+          syncEnvelopeOverlay(st.target);
+          onCanvasModified?.();
+          socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+        }
+        return;
+      }
+
+      // Finalize Interactive Block Shadow drag (or apply default on single click if none)
+      if (activeTool === 'block_shadow' && blockShadowDragRef.current) {
+        const st = blockShadowDragRef.current;
+        blockShadowDragRef.current = null;
+        setCadHud(null);
+        const alreadyHas = extractTargetBlockShadowForUi(canvas, st.target).hasBlockShadow;
+        if (!st.didDrag && st.mode === 'from_object' && !alreadyHas) {
+          void applyBlockShadowParamsToTarget(
+            canvas,
+            st.target,
+            st.params,
+            { lockForBlockShadowTool: true }
+          ).then((actual) => {
+            onUpdateProperties({
+              blockShadowOffsetX: st.params.offsetX,
+              blockShadowOffsetY: st.params.offsetY,
+              blockShadowColor: st.params.color,
+              blockShadowSimplify: st.params.simplify,
+              blockShadowRemoveHoles: st.params.removeHoles,
+              blockShadowFromOutline: st.params.fromOutline,
+              blockShadowExpandEnabled: st.params.expandEnabled,
+              blockShadowExpandPx: st.params.expandPx,
+              blockShadowOverprint: st.params.overprint,
+            });
+            syncBlockShadowOverlay(actual);
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          });
+        } else {
+          syncBlockShadowOverlay(st.target);
+          if (st.didDrag) {
+            onCanvasModified?.();
+            socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
+          }
+        }
+        return;
+      }
 
       // Finalize Freehand vector stroke (with closed-loop & endpoint-to-endpoint closing)
       if (activeTool === 'freehand' && freehandDrawRef.current) {
@@ -5495,6 +8038,30 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           } else {
             onSelectTool('pick');
           }
+        } else if (activeTool === 'shadow') {
+          shadowDragRef.current = null;
+          setShadowOverlay(null);
+          onSelectTool('pick');
+        } else if (activeTool === 'contour') {
+          contourDragRef.current = null;
+          setContourOverlay(null);
+          onSelectTool('pick');
+        } else if (activeTool === 'blend') {
+          blendDragRef.current = null;
+          setBlendOverlay(null);
+          onSelectTool('pick');
+        } else if (activeTool === 'extrude') {
+          extrudeDragRef.current = null;
+          setExtrudeOverlay(null);
+          onSelectTool('pick');
+        } else if (activeTool === 'envelope') {
+          envelopeDragRef.current = null;
+          setEnvelopeOverlay(null);
+          onSelectTool('pick');
+        } else if (activeTool === 'block_shadow') {
+          blockShadowDragRef.current = null;
+          setBlockShadowOverlay(null);
+          onSelectTool('pick');
         }
       } else if (e.key === 'Enter' && activeTool === 'transparency' && transparencyPopupRef.current) {
         e.preventDefault();
@@ -5534,6 +8101,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           }
           canvas.requestRenderAll();
           onSelectionChange(null);
+          onCanvasModifiedRef.current?.();
           socketService.sendCanvasUpdate(canvas.toJSON(), 'remove');
         }
       } else if (!e.ctrlKey && !e.metaKey && (e.key === 'v' || e.key === 'V')) {
@@ -5551,6 +8119,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           });
           active.setCoords();
           canvas.renderAll();
+          onCanvasModifiedRef.current?.();
           socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
         }
       }
@@ -5570,7 +8139,16 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
 
   // AutoCAD-Grade Real-time Object Snapping Engine (Move + Polar/Ortho + CAD HUD)
   const handleObjectMoving = useCallback((e: any) => {
-    if (isPanningRef.current || activeToolRef.current === 'pan') {
+    if (
+      isPanningRef.current ||
+      activeToolRef.current === 'pan' ||
+      activeToolRef.current === 'shadow' ||
+      activeToolRef.current === 'contour' ||
+      activeToolRef.current === 'blend' ||
+      activeToolRef.current === 'extrude' ||
+      activeToolRef.current === 'envelope' ||
+      activeToolRef.current === 'block_shadow'
+    ) {
       return;
     }
 
@@ -5759,7 +8337,25 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    const handleObjectRotating = () => {
+    const handleObjectRotating = (e: any) => {
+      const target = e?.target as fabric.FabricObject | undefined;
+      if (target) {
+        let deg = Math.round(((target.angle || 0) % 360) * 10) / 10;
+        if (deg < 0) deg += 360;
+        if ((target as any).isGuideline) {
+          setCadHud({
+            x: target.left || 0,
+            y: target.top || 0,
+            text: `Guide ∠ ${deg}°`,
+          });
+        } else {
+          setCadHud({
+            x: target.left || 0,
+            y: target.top || 0,
+            text: `∠ ${deg}°`,
+          });
+        }
+      }
       if (
         parametricStateRef.current?.showConstraints &&
         (parametricStateRef.current.dimConstraints.length > 0 ||
@@ -6042,6 +8638,137 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
     };
   }, [handleMouseDown, handleMouseMove, handleMouseUp, handleDoubleClick, handleObjectMoving, handleObjectScaling, onPowerClipEdit, onSelectionChange]);
 
+  // Drag from Top or Left Ruler onto page/object to create a blue dashed guideline
+  const handleStartGuideDrag = useCallback(
+    (orientation: 'horizontal' | 'vertical', e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const computeGuidePoint = (clientX: number, clientY: number) => {
+        const canvas = fabricRef.current;
+        const desk = deskRef.current;
+        if (!canvas || !desk) {
+          return { sceneX: 0, sceneY: 0, isInsideDesk: false, snapMarker: null as SnapMarker | null };
+        }
+        const rect = desk.getBoundingClientRect();
+        const isInsideDesk =
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom;
+
+        const curZoom = zoomLevelRef.current || 1;
+        const curPan = panRef.current;
+        const rawX = (clientX - rect.left - curPan.x) / curZoom;
+        const rawY = (clientY - rect.top - curPan.y) / curZoom;
+
+        let sceneX = rawX;
+        let sceneY = rawY;
+        let snapMarker: SnapMarker | null = null;
+
+        const currentSnap = snapConfigRef.current;
+        if (isInsideDesk && currentSnap?.enabled) {
+          const osnap = findNearestOsnapPoint(
+            rawX,
+            rawY,
+            canvas.getObjects(),
+            null,
+            pageConfigRef.current,
+            currentSnap,
+            curZoom
+          );
+          if (osnap) {
+            sceneX = osnap.x;
+            sceneY = osnap.y;
+            snapMarker = {
+              id: `guide-drag-snap-${Math.round(osnap.x)}-${Math.round(osnap.y)}`,
+              x: osnap.x,
+              y: osnap.y,
+              type: osnap.type,
+              label: osnap.label,
+            };
+          }
+        }
+        return { sceneX, sceneY, isInsideDesk, snapMarker };
+      };
+
+      const init = computeGuidePoint(e.clientX, e.clientY);
+      setGuideDragPreview({
+        orientation,
+        sceneX: init.sceneX,
+        sceneY: init.sceneY,
+        isInsideDesk: init.isInsideDesk,
+      });
+
+      const onWindowMove = (me: MouseEvent) => {
+        const pt = computeGuidePoint(me.clientX, me.clientY);
+        setGuideDragPreview({
+          orientation,
+          sceneX: pt.sceneX,
+          sceneY: pt.sceneY,
+          isInsideDesk: pt.isInsideDesk,
+        });
+        setHoverSnapMarker(pt.snapMarker);
+        if (pt.isInsideDesk) {
+          setCadHud({
+            x: pt.sceneX,
+            y: pt.sceneY,
+            text:
+              orientation === 'horizontal'
+                ? `Guide Y: ${Math.round(pt.sceneY)} px`
+                : `Guide X: ${Math.round(pt.sceneX)} px`,
+          });
+        } else {
+          setCadHud(null);
+        }
+      };
+
+      const onWindowUp = (ue: MouseEvent) => {
+        window.removeEventListener('mousemove', onWindowMove);
+        window.removeEventListener('mouseup', onWindowUp);
+        setGuideDragPreview(null);
+        setHoverSnapMarker(null);
+        setCadHud(null);
+
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+        const drop = computeGuidePoint(ue.clientX, ue.clientY);
+        if (!drop.isInsideDesk) return;
+
+        const curZoom = Math.max(0.01, zoomLevelRef.current || 1);
+        const guide = new fabric.Line([-6000, 0, 6000, 0], {
+          left: drop.sceneX,
+          top: drop.sceneY,
+          originX: 'center',
+          originY: 'center',
+          angle: orientation === 'horizontal' ? 0 : 90,
+          fill: 'transparent',
+          stroke: '#0078d7',
+          strokeWidth: 1.25 / curZoom,
+          strokeDashArray: [6 / curZoom, 4 / curZoom],
+          strokeUniform: true,
+          selectable: activeToolRef.current === 'pick' || activeToolRef.current === 'freehand_pick',
+          evented: activeToolRef.current === 'pick' || activeToolRef.current === 'freehand_pick',
+        });
+        (guide as any).isGuideline = true;
+        (guide as any).guideOrientation = orientation;
+        (guide as any).excludeFromExport = true;
+        ensureObjectId(guide, orientation === 'horizontal' ? 'Horizontal Guide' : 'Vertical Guide');
+        configureGuidelineObject(guide, false);
+        canvas.add(guide);
+        guide.setCoords();
+        keepGuidelinesOnTop(canvas);
+        canvas.requestRenderAll();
+        onCanvasModifiedRef.current?.();
+        socketService.sendCanvasUpdate(canvas.toJSON(), 'add', (guide as any).id, guide.toJSON());
+      };
+
+      window.addEventListener('mousemove', onWindowMove);
+      window.addEventListener('mouseup', onWindowUp);
+    },
+    []
+  );
+
   return (
     <div
       ref={containerRef}
@@ -6073,6 +8800,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
               units={pageConfig.units}
               theme={theme}
               pageWidth={pageConfig.width}
+              onStartGuideDrag={handleStartGuideDrag}
             />
           </div>
         </div>
@@ -6089,6 +8817,7 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
               units={pageConfig.units}
               theme={theme}
               pageHeight={pageConfig.height}
+              onStartGuideDrag={handleStartGuideDrag}
             />
           </div>
         )}
@@ -6487,6 +9216,13 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
           {(activeSnapLines.length > 0 ||
             activeSnapMarkers.length > 0 ||
             hoverSnapMarker ||
+            guideDragPreview ||
+            (activeTool === 'shadow' && shadowOverlay) ||
+            (activeTool === 'contour' && contourOverlay) ||
+            (activeTool === 'blend' && blendOverlay) ||
+            (activeTool === 'extrude' && extrudeOverlay) ||
+            (activeTool === 'envelope' && envelopeOverlay) ||
+            (activeTool === 'block_shadow' && blockShadowOverlay) ||
             activePolarGuide ||
             bezierRubberBand ||
             line2pPreview ||
@@ -7009,6 +9745,31 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                 />
               )}
 
+              {/* Live Ruler-to-Canvas Guideline Drag Preview */}
+              {guideDragPreview && guideDragPreview.isInsideDesk && (
+                guideDragPreview.orientation === 'horizontal' ? (
+                  <line
+                    x1={0}
+                    y1={pan.y + guideDragPreview.sceneY * zoomLevel}
+                    x2="100%"
+                    y2={pan.y + guideDragPreview.sceneY * zoomLevel}
+                    stroke="#0078d7"
+                    strokeWidth="1.25"
+                    strokeDasharray="6 4"
+                  />
+                ) : (
+                  <line
+                    x1={pan.x + guideDragPreview.sceneX * zoomLevel}
+                    y1={0}
+                    x2={pan.x + guideDragPreview.sceneX * zoomLevel}
+                    y2="100%"
+                    stroke="#0078d7"
+                    strokeWidth="1.25"
+                    strokeDasharray="6 4"
+                  />
+                )
+              )}
+
               {/* Snap Guidelines (Alignment Guides) */}
               {showAlignmentGuides && activeSnapLines.map((line) => {
                 const color =
@@ -7334,6 +10095,596 @@ export const NuraCanvas: React.FC<NuraCanvasProps> = ({
                     stroke="#0f172a"
                     strokeWidth="1.4"
                   />
+                );
+              })()}
+
+              {/* Interactive Drop Shadow Vector Arrow, Tip Handle & Mid-Line Transparency Handle */}
+              {activeTool === 'shadow' && shadowOverlay && (() => {
+                const sx = pan.x + shadowOverlay.cx * zoomLevel;
+                const sy = pan.y + shadowOverlay.cy * zoomLevel;
+                const tx = pan.x + (shadowOverlay.cx + shadowOverlay.offsetX) * zoomLevel;
+                const ty = pan.y + (shadowOverlay.cy + shadowOverlay.offsetY) * zoomLevel;
+                const screenDist = Math.hypot(tx - sx, ty - sy);
+                const showOpacitySlider = shadowOverlay.hasShadow && screenDist >= 42;
+                const tFrac = Math.max(0.12, Math.min(0.88, 1 - shadowOverlay.transparency / 100));
+                const ox = sx + (tx - sx) * tFrac;
+                const oy = sy + (ty - sy) * tFrac;
+                const ux = screenDist > 0.5 ? (tx - sx) / screenDist : 1;
+                const uy = screenDist > 0.5 ? (ty - sy) / screenDist : 0;
+                const nx = -uy;
+                const ny = ux;
+
+                return (
+                  <g>
+                    {/* Contrasting white under-stroke + dark dashed vector arrow */}
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeOpacity="0.85"
+                    />
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#0f172a"
+                      strokeWidth="1.4"
+                      strokeDasharray="4 3"
+                    />
+
+                    {/* Mid-line Transparency scrub tick & slider knob */}
+                    {showOpacitySlider && (
+                      <g>
+                        <line
+                          x1={ox - nx * 8}
+                          y1={oy - ny * 8}
+                          x2={ox + nx * 8}
+                          y2={oy + ny * 8}
+                          stroke="#ffffff"
+                          strokeWidth="3.5"
+                        />
+                        <line
+                          x1={ox - nx * 8}
+                          y1={oy - ny * 8}
+                          x2={ox + nx * 8}
+                          y2={oy + ny * 8}
+                          stroke="#0078d7"
+                          strokeWidth="1.8"
+                        />
+                        <rect
+                          x={ox - 4}
+                          y={oy - 4}
+                          width={8}
+                          height={8}
+                          rx={1}
+                          fill="#ffffff"
+                          stroke="#0078d7"
+                          strokeWidth="1.6"
+                        />
+                      </g>
+                    )}
+
+                    {/* Object Anchor Square (Start □) */}
+                    <rect
+                      x={sx - 4.5}
+                      y={sy - 4.5}
+                      width={9}
+                      height={9}
+                      fill="#ffffff"
+                      stroke="#0f172a"
+                      strokeWidth="1.6"
+                    />
+
+                    {/* Shadow Offset End Handle (Tip ■) */}
+                    <rect
+                      x={tx - 5}
+                      y={ty - 5}
+                      width={10}
+                      height={10}
+                      fill={shadowOverlay.hasShadow ? '#0f172a' : '#0078d7'}
+                      stroke="#ffffff"
+                      strokeWidth="1.6"
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* Interactive Contour Vector Arrow, Tip Handle & Mid-Line Steps Slider */}
+              {activeTool === 'contour' && contourOverlay && (() => {
+                const sx = pan.x + contourOverlay.anchorX * zoomLevel;
+                const sy = pan.y + contourOverlay.anchorY * zoomLevel;
+                const tx = pan.x + contourOverlay.tipX * zoomLevel;
+                const ty = pan.y + contourOverlay.tipY * zoomLevel;
+                const screenDist = Math.hypot(tx - sx, ty - sy);
+                const showStepsSlider = contourOverlay.hasContour && screenDist >= 42;
+                const sFrac = Math.max(0.12, Math.min(0.88, contourOverlay.steps / 20));
+                const mx = sx + (tx - sx) * sFrac;
+                const my = sy + (ty - sy) * sFrac;
+                const ux = screenDist > 0.5 ? (tx - sx) / screenDist : 1;
+                const uy = screenDist > 0.5 ? (ty - sy) / screenDist : 0;
+                const nx = -uy;
+                const ny = ux;
+
+                return (
+                  <g>
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeOpacity="0.85"
+                    />
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#0f172a"
+                      strokeWidth="1.4"
+                      strokeDasharray="4 3"
+                    />
+
+                    {showStepsSlider && (
+                      <g>
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#ffffff"
+                          strokeWidth="3.5"
+                        />
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#0078d7"
+                          strokeWidth="1.8"
+                        />
+                        <rect
+                          x={mx - 4}
+                          y={my - 4}
+                          width={8}
+                          height={8}
+                          rx={1}
+                          fill="#ffffff"
+                          stroke="#0078d7"
+                          strokeWidth="1.6"
+                        />
+                      </g>
+                    )}
+
+                    {/* Object Anchor Square (Start □) */}
+                    <rect
+                      x={sx - 4.5}
+                      y={sy - 4.5}
+                      width={9}
+                      height={9}
+                      fill="#ffffff"
+                      stroke="#0f172a"
+                      strokeWidth="1.6"
+                    />
+
+                    {/* Contour Offset End Handle (Tip ■) */}
+                    <rect
+                      x={tx - 5}
+                      y={ty - 5}
+                      width={10}
+                      height={10}
+                      fill={contourOverlay.hasContour ? '#0f172a' : '#0078d7'}
+                      stroke="#ffffff"
+                      strokeWidth="1.6"
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* Interactive Blend Vector Line, Hover Highlight & Steps Slider */}
+              {activeTool === 'blend' && blendOverlay && (() => {
+                const sx = pan.x + blendOverlay.startX * zoomLevel;
+                const sy = pan.y + blendOverlay.startY * zoomLevel;
+                const tx = pan.x + blendOverlay.endX * zoomLevel;
+                const ty = pan.y + blendOverlay.endY * zoomLevel;
+                const screenDist = Math.hypot(tx - sx, ty - sy);
+                const ux = screenDist > 0.5 ? (tx - sx) / screenDist : 1;
+                const uy = screenDist > 0.5 ? (ty - sy) / screenDist : 0;
+                const nx = -uy;
+                const ny = ux;
+
+                const isLinked = blendOverlay.mode === 'linked';
+                const showStepsSlider = isLinked && screenDist >= 42;
+                const sFrac = isLinked ? Math.max(0.12, Math.min(0.88, blendOverlay.steps / 40)) : 0.5;
+                const mx = sx + (tx - sx) * sFrac;
+                const my = sy + (ty - sy) * sFrac;
+
+                const hoverRect =
+                  blendOverlay.mode === 'picking' && blendOverlay.hoverTarget
+                    ? blendOverlay.hoverTarget.getBoundingRect()
+                    : null;
+
+                return (
+                  <g>
+                    {hoverRect && (
+                      <rect
+                        x={pan.x + hoverRect.left * zoomLevel}
+                        y={pan.y + hoverRect.top * zoomLevel}
+                        width={hoverRect.width * zoomLevel}
+                        height={hoverRect.height * zoomLevel}
+                        fill="rgba(0, 120, 215, 0.08)"
+                        stroke="#0078d7"
+                        strokeWidth="2"
+                        strokeDasharray="4 3"
+                      />
+                    )}
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeOpacity="0.85"
+                    />
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke={blendOverlay.mode === 'picking' && blendOverlay.hoverTarget ? '#0078d7' : '#0f172a'}
+                      strokeWidth="1.5"
+                      strokeDasharray="4 3"
+                    />
+
+                    {showStepsSlider && (
+                      <g>
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#ffffff"
+                          strokeWidth="3.5"
+                        />
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#0078d7"
+                          strokeWidth="1.8"
+                        />
+                        <rect
+                          x={mx - 4}
+                          y={my - 4}
+                          width={8}
+                          height={8}
+                          rx={1}
+                          fill="#ffffff"
+                          stroke="#0078d7"
+                          strokeWidth="1.6"
+                        />
+                      </g>
+                    )}
+
+                    {/* Start Object Anchor (□) */}
+                    <rect
+                      x={sx - 4.5}
+                      y={sy - 4.5}
+                      width={9}
+                      height={9}
+                      fill="#ffffff"
+                      stroke="#0f172a"
+                      strokeWidth="1.6"
+                    />
+
+                    {/* End Object Anchor (■) */}
+                    <rect
+                      x={tx - 5}
+                      y={ty - 5}
+                      width={10}
+                      height={10}
+                      fill={isLinked || (blendOverlay.mode === 'picking' && blendOverlay.hoverTarget) ? '#0078d7' : '#0f172a'}
+                      stroke="#ffffff"
+                      strokeWidth="1.6"
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* Interactive Extrude 3D Vector Line, Depth Slider (|) & Vanishing Point Handle (×) */}
+              {activeTool === 'extrude' && extrudeOverlay && (() => {
+                const sx = pan.x + extrudeOverlay.cx * zoomLevel;
+                const sy = pan.y + extrudeOverlay.cy * zoomLevel;
+                const tx = pan.x + extrudeOverlay.vpX * zoomLevel;
+                const ty = pan.y + extrudeOverlay.vpY * zoomLevel;
+                const screenDist = Math.hypot(tx - sx, ty - sy);
+                const showDepthSlider = extrudeOverlay.hasExtrude && screenDist >= 42;
+                const dFrac = Math.max(0.12, Math.min(0.88, extrudeOverlay.depth / 100));
+                const mx = sx + (tx - sx) * dFrac;
+                const my = sy + (ty - sy) * dFrac;
+                const ux = screenDist > 0.5 ? (tx - sx) / screenDist : 1;
+                const uy = screenDist > 0.5 ? (ty - sy) / screenDist : 0;
+                const nx = -uy;
+                const ny = ux;
+
+                return (
+                  <g>
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      strokeOpacity="0.85"
+                    />
+                    <line
+                      x1={sx}
+                      y1={sy}
+                      x2={tx}
+                      y2={ty}
+                      stroke="#0f172a"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 3"
+                    />
+
+                    {showDepthSlider && (
+                      <g>
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#ffffff"
+                          strokeWidth="3.5"
+                        />
+                        <line
+                          x1={mx - nx * 8}
+                          y1={my - ny * 8}
+                          x2={mx + nx * 8}
+                          y2={my + ny * 8}
+                          stroke="#0078d7"
+                          strokeWidth="1.8"
+                        />
+                        <rect
+                          x={mx - 4}
+                          y={my - 4}
+                          width={8}
+                          height={8}
+                          rx={1}
+                          fill="#ffffff"
+                          stroke="#0078d7"
+                          strokeWidth="1.6"
+                        />
+                      </g>
+                    )}
+
+                    {/* Object Anchor Square (□) */}
+                    <rect
+                      x={sx - 4.5}
+                      y={sy - 4.5}
+                      width={9}
+                      height={9}
+                      fill="#ffffff"
+                      stroke="#0f172a"
+                      strokeWidth="1.6"
+                    />
+
+                    {/* Vanishing Point Handle (×) */}
+                    {extrudeOverlay.hasExtrude && (
+                      <g transform={`translate(${tx}, ${ty})`}>
+                        <circle
+                          cx={0}
+                          cy={0}
+                          r={8}
+                          fill="#ffffff"
+                          fillOpacity="0.92"
+                          stroke="#0078d7"
+                          strokeWidth="1.5"
+                        />
+                        <line x1={-4} y1={-4} x2={4} y2={4} stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+                        <line x1={4} y1={-4} x2={-4} y2={4} stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+                      </g>
+                    )}
+                  </g>
+                );
+              })()}
+
+              {/* Interactive Envelope 8-Node Blue Dashed Cage Overlay (matching NuraDraw-style □ corners & ○ midpoints) */}
+              {activeTool === 'envelope' && envelopeOverlay && (() => {
+                const cageD = computeEnvelopeCageSvgPath(
+                  envelopeOverlay.cage,
+                  envelopeOverlay.mode,
+                  pan,
+                  zoomLevel
+                );
+                const toScr = (p: { x: number; y: number }) => ({
+                  x: pan.x + p.x * zoomLevel,
+                  y: pan.y + p.y * zoomLevel,
+                });
+                const corners: { id: EnvelopeNodeId; pt: { x: number; y: number } }[] = [
+                  { id: 'tl', pt: toScr(envelopeOverlay.cage.tl) },
+                  { id: 'tr', pt: toScr(envelopeOverlay.cage.tr) },
+                  { id: 'br', pt: toScr(envelopeOverlay.cage.br) },
+                  { id: 'bl', pt: toScr(envelopeOverlay.cage.bl) },
+                ];
+                const midpoints: { id: EnvelopeNodeId; pt: { x: number; y: number } }[] = [
+                  { id: 'tm', pt: toScr(envelopeOverlay.cage.tm) },
+                  { id: 'rm', pt: toScr(envelopeOverlay.cage.rm) },
+                  { id: 'bm', pt: toScr(envelopeOverlay.cage.bm) },
+                  { id: 'lm', pt: toScr(envelopeOverlay.cage.lm) },
+                ];
+
+                return (
+                  <g>
+                    <path
+                      d={cageD}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth="2.6"
+                      strokeOpacity="0.65"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d={cageD}
+                      fill="none"
+                      stroke="#0078d7"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 3"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* 4 Corner Square Handles (□) — Active / BL origin renders hollow blue arrow/triangle ◁ */}
+                    {corners.map(({ id, pt }) => {
+                      const isActive = envelopeOverlay.activeNode === id;
+                      const showOriginArrow =
+                        id === 'bl' &&
+                        (envelopeOverlay.activeNode === 'bl' ||
+                          midpoints.some((m) => m.id === envelopeOverlay.activeNode));
+                      if (showOriginArrow || (isActive && id === 'bl')) {
+                        return (
+                          <polygon
+                            key={id}
+                            points={`${pt.x - 7},${pt.y} ${pt.x + 3.5},${pt.y - 4.5} ${pt.x + 3.5},${pt.y + 4.5}`}
+                            fill="#ffffff"
+                            stroke="#0078d7"
+                            strokeWidth="1.6"
+                            strokeLinejoin="round"
+                          />
+                        );
+                      }
+                      const size = isActive ? 8.5 : 7;
+                      return (
+                        <rect
+                          key={id}
+                          x={pt.x - size / 2}
+                          y={pt.y - size / 2}
+                          width={size}
+                          height={size}
+                          fill={isActive ? '#0078d7' : '#ffffff'}
+                          stroke={isActive ? '#ffffff' : '#0078d7'}
+                          strokeWidth="1.5"
+                        />
+                      );
+                    })}
+
+                    {/* 4 Edge-Midpoint Circle Handles (○) */}
+                    {midpoints.map(({ id, pt }) => {
+                      const isActive = envelopeOverlay.activeNode === id;
+                      return (
+                        <circle
+                          key={id}
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isActive ? 4.8 : 4.2}
+                          fill="#ffffff"
+                          stroke={isActive ? '#005a9e' : '#0078d7'}
+                          strokeWidth={isActive ? '2.1' : '1.6'}
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              })()}
+
+              {/* Interactive Block Shadow Vector Arrow ([×] -> [■]) matching image_daf726b5.png */}
+              {activeTool === 'block_shadow' && blockShadowOverlay && (() => {
+                const sx = pan.x + blockShadowOverlay.cx * zoomLevel;
+                const sy = pan.y + blockShadowOverlay.cy * zoomLevel;
+                const tx = pan.x + (blockShadowOverlay.cx + blockShadowOverlay.offsetX) * zoomLevel;
+                const ty = pan.y + (blockShadowOverlay.cy + blockShadowOverlay.offsetY) * zoomLevel;
+                const dx = tx - sx;
+                const dy = ty - sy;
+                const len = Math.hypot(dx, dy);
+                const ux = len > 0.5 ? dx / len : 1;
+                const uy = len > 0.5 ? dy / len : 0;
+                const nx = -uy;
+                const ny = ux;
+                const mx = (sx + tx) * 0.5;
+                const my = (sy + ty) * 0.5;
+                // Place arrowhead right before the 12x12 tip square
+                const arrowTipX = tx - ux * 7;
+                const arrowTipY = ty - uy * 7;
+                const arrowBaseX = arrowTipX - ux * 9;
+                const arrowBaseY = arrowTipY - uy * 9;
+
+                return (
+                  <g>
+                    {blockShadowOverlay.hasBlockShadow && len > 2 && (
+                      <>
+                        {/* White halo + dark shaft */}
+                        <line
+                          x1={sx}
+                          y1={sy}
+                          x2={tx}
+                          y2={ty}
+                          stroke="#ffffff"
+                          strokeWidth="2.8"
+                          strokeOpacity="0.85"
+                        />
+                        <line
+                          x1={sx}
+                          y1={sy}
+                          x2={tx}
+                          y2={ty}
+                          stroke="#0f172a"
+                          strokeWidth="1.35"
+                        />
+                        {/* Midpoint small 'x' tick matching image_daf726b5.png */}
+                        {len >= 28 && (
+                          <g transform={`translate(${mx}, ${my})`}>
+                            <line x1={-3} y1={-3} x2={3} y2={3} stroke="#0f172a" strokeWidth="1.4" />
+                            <line x1={3} y1={-3} x2={-3} y2={3} stroke="#0f172a" strokeWidth="1.4" />
+                          </g>
+                        )}
+                        {/* Black Arrowhead pointing toward end swatch handle */}
+                        {len >= 20 && (
+                          <polygon
+                            points={`${arrowTipX},${arrowTipY} ${arrowBaseX + nx * 4.5},${arrowBaseY + ny * 4.5} ${arrowBaseX - nx * 4.5},${arrowBaseY - ny * 4.5}`}
+                            fill="#0f172a"
+                            stroke="#ffffff"
+                            strokeWidth="0.7"
+                          />
+                        )}
+                      </>
+                    )}
+
+                    {/* Origin Blue-Crossed Square [×] */}
+                    <g transform={`translate(${sx}, ${sy})`}>
+                      <rect
+                        x={-6}
+                        y={-6}
+                        width={12}
+                        height={12}
+                        fill="#ffffff"
+                        stroke="#0078d7"
+                        strokeWidth="1.5"
+                      />
+                      <line x1={-4.5} y1={-4.5} x2={4.5} y2={4.5} stroke="#0078d7" strokeWidth="1.35" />
+                      <line x1={4.5} y1={-4.5} x2={-4.5} y2={4.5} stroke="#0078d7" strokeWidth="1.35" />
+                    </g>
+
+                    {/* End Color Handle [■] */}
+                    {blockShadowOverlay.hasBlockShadow && (
+                      <rect
+                        x={tx - 6}
+                        y={ty - 6}
+                        width={12}
+                        height={12}
+                        fill={blockShadowOverlay.color}
+                        stroke="#ffffff"
+                        strokeWidth="1.8"
+                        style={{ filter: 'drop-shadow(0 0 1px rgba(15,23,42,0.85))' }}
+                      />
+                    )}
+                  </g>
                 );
               })()}
 

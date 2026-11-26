@@ -10,6 +10,7 @@ interface RulersProps {
   theme?: ThemeMode;
   pageWidth?: number;
   pageHeight?: number;
+  onStartGuideDrag?: (orientation: 'horizontal' | 'vertical', e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 /**
@@ -99,6 +100,7 @@ export const TopRuler: React.FC<RulersProps> = ({
   units,
   theme = 'light',
   pageWidth = 816,
+  onStartGuideDrag,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -248,8 +250,17 @@ export const TopRuler: React.FC<RulersProps> = ({
   }, [zoom, pan, cursorPos, units, isDark, pageWidth]);
 
   return (
-    <div ref={containerRef} className="w-full h-5 relative overflow-hidden select-none">
-      <canvas ref={canvasRef} className="block" />
+    <div
+      ref={containerRef}
+      onMouseDown={(e) => {
+        if (e.button === 0 && onStartGuideDrag) {
+          onStartGuideDrag('horizontal', e);
+        }
+      }}
+      title="Drag down onto page or object to create a horizontal guideline"
+      className="w-full h-5 relative overflow-hidden select-none cursor-row-resize"
+    >
+      <canvas ref={canvasRef} className="block pointer-events-none" />
     </div>
   );
 };
@@ -264,6 +275,7 @@ export const LeftRuler: React.FC<RulersProps> = ({
   units,
   theme = 'light',
   pageHeight = 1056,
+  onStartGuideDrag,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -407,8 +419,17 @@ export const LeftRuler: React.FC<RulersProps> = ({
   }, [zoom, pan, cursorPos, units, isDark, pageHeight]);
 
   return (
-    <div ref={containerRef} className="w-5 h-full relative overflow-hidden select-none">
-      <canvas ref={canvasRef} className="block" />
+    <div
+      ref={containerRef}
+      onMouseDown={(e) => {
+        if (e.button === 0 && onStartGuideDrag) {
+          onStartGuideDrag('vertical', e);
+        }
+      }}
+      title="Drag right onto page or object to create a vertical guideline"
+      className="w-5 h-full relative overflow-hidden select-none cursor-col-resize"
+    >
+      <canvas ref={canvasRef} className="block pointer-events-none" />
     </div>
   );
 };

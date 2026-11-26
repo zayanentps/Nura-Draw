@@ -4,6 +4,18 @@ import { X, Sparkles } from 'lucide-react';
 import { ThemeMode } from '../types';
 import { disableObjectCaching, ensureObjectId } from '../utils/canvasHelpers';
 import { hexToRgb, normalizeHex, rgbToHex } from '../utils/colorConversion';
+import { applyExtrudeParamsToTarget } from '../utils/extrudeHelpers';
+import { ENVELOPE_PRESETS, applyEnvelopePresetToTarget } from '../utils/envelopeHelpers';
+import {
+  DEFAULT_EMBOSS_PARAMS,
+  EmbossParams,
+  applyEmbossParamsToTarget,
+  applyEmbossToCanvas,
+  extractTargetEmbossForUi,
+  removeEmbossFromTarget,
+  sampleCanvasPixelHex,
+} from '../utils/embossHelpers';
+import { EmbossControlsPanel } from './EmbossControlsPanel';
 
 export type EffectDialogState =
   | null
@@ -1037,21 +1049,36 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
 
   // Filter Effect States
   const [filterAmount, setFilterAmount] = useState(50);
+  const [embossParams, setEmbossParams] = useState<EmbossParams>({ ...DEFAULT_EMBOSS_PARAMS });
+  const [embossEyedropper, setEmbossEyedropper] = useState(false);
   const [previewSrcCanvas, setPreviewSrcCanvas] = useState<HTMLCanvasElement | null>(null);
   const previewOutRef = useRef<HTMLCanvasElement | null>(null);
+
+  const isEmbossDialog =
+    dialog?.kind === 'filter' && dialog.effectName.toLowerCase().includes('emboss');
 
   useEffect(() => {
     if (!dialog || dialog.kind !== 'filter' || !selectedObject) {
       setPreviewSrcCanvas(null);
+      setEmbossEyedropper(false);
       return;
     }
     setFilterAmount(50);
-    const dataUrl = selectedObject.toDataURL({
-      format: 'png',
-      multiplier: 1,
-      withoutShadow: true,
-      enableRetinaScaling: false,
-    });
+    setEmbossEyedropper(false);
+    if (dialog.effectName.toLowerCase().includes('emboss')) {
+      const existing = extractTargetEmbossForUi(selectedObject);
+      setEmbossParams(existing.hasEmboss ? existing.params : { ...DEFAULT_EMBOSS_PARAMS });
+    }
+    const existingSrcUrl = (selectedObject as any).embossSourceDataUrl as string | undefined;
+    const dataUrl =
+      dialog.effectName.toLowerCase().includes('emboss') && existingSrcUrl
+        ? existingSrcUrl
+        : selectedObject.toDataURL({
+            format: 'png',
+            multiplier: 1,
+            withoutShadow: true,
+            enableRetinaScaling: false,
+          });
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas');
@@ -1066,19 +1093,21 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
 
   useEffect(() => {
     if (!dialog || dialog.kind !== 'filter' || !previewSrcCanvas || !previewOutRef.current) return;
-    const processed = applyPixelEffectToCanvas(
-      previewSrcCanvas,
-      dialog.effectName,
-      dialog.category,
-      filterAmount
-    );
+    const processed = isEmbossDialog
+      ? applyEmbossToCanvas(previewSrcCanvas, embossParams)
+      : applyPixelEffectToCanvas(
+          previewSrcCanvas,
+          dialog.effectName,
+          dialog.category,
+          filterAmount
+        );
     const target = previewOutRef.current;
     target.width = processed.width;
     target.height = processed.height;
     const tctx = target.getContext('2d')!;
     tctx.clearRect(0, 0, target.width, target.height);
     tctx.drawImage(processed, 0, 0);
-  }, [dialog, previewSrcCanvas, filterAmount]);
+  }, [dialog, previewSrcCanvas, filterAmount, isEmbossDialog, embossParams]);
 
   if (!dialog || !canvas) return null;
 
@@ -1225,69 +1254,45 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
 
   const applyEnvelope = () => {
     if (!selectedObject) return;
-    const amt = envelopeAmount;
+    const amt = Math.max(-0.9, Math.min(0.9, envelopeAmount / 100));
     const targets =
       selectedObject.type === 'activeselection'
         ? (selectedObject as fabric.ActiveSelection).getObjects()
         : [selectedObject];
 
+    const mappedPresetId =
+      envelopePreset === 'arc_top'
+        ? 'inward_pinch'
+        : envelopePreset === 'bulge'
+        ? 'bulge_out'
+        : envelopePreset;
+
+    let lastResult: fabric.FabricObject | null = null;
     for (const target of targets) {
-      if (envelopePreset === 'skew_left') {
-        target.set({ skewX: -amt * 0.6, skewY: amt * 0.15 });
-      } else if (envelopePreset === 'skew_right') {
-        target.set({ skewX: amt * 0.6, skewY: -amt * 0.15 });
-      } else if (envelopePreset === 'bulge') {
-        target.set({
-          scaleX: (target.scaleX || 1) * (1 + amt / 180),
-          scaleY: (target.scaleY || 1) * Math.max(0.2, 1 - amt / 300),
-        });
-      } else {
-        target.set({
-          skewY: amt * 0.35,
-          angle: (target.angle || 0) + amt * 0.12,
-        });
-      }
-      (target as any).hasEffects = true;
-      target.setCoords();
+      lastResult = applyEnvelopePresetToTarget(canvas, target, mappedPresetId, amt);
+    }
+    if (targets.length === 1 && lastResult) {
+      canvas.setActiveObject(lastResult);
+      (canvas as any).fire('envelope:updated', { target: lastResult });
     }
     canvas.requestRenderAll();
     onCanvasUpdated('Envelope');
-    onToast?.(`Applied ${envelopePreset.replace('_', ' ')} Envelope`);
+    onToast?.(`Applied ${envelopePreset.replace(/_/g, ' ')} Envelope`);
     onClose();
   };
 
   const applyExtrude = async () => {
     if (!selectedObject) return;
-    const objects = canvas.getObjects();
-    const firstItem =
-      selectedObject.type === 'activeselection'
-        ? (selectedObject as fabric.ActiveSelection).getObjects()[0]
-        : selectedObject;
-    const insertIdx = Math.max(0, objects.indexOf(firstItem));
-    const origCenter = selectedObject.getCenterPoint();
-    const depthSteps = Math.max(3, Math.min(20, steps));
-    for (let i = depthSteps; i >= 1; i--) {
-      const t = i / depthSteps;
-      const clone = await makeCloneableTemplate(selectedObject);
-      clone.set({
-        fill: extrudeColor,
-        stroke: extrudeColor,
-      });
-      clone.setPositionByOrigin(
-        new fabric.Point(origCenter.x + extrudeDepthX * t, origCenter.y + extrudeDepthY * t),
-        'center',
-        'center'
-      );
-      ensureObjectId(clone, `Extrude Depth ${i}`);
-      disableObjectCaching(clone);
-      canvas.add(clone);
-      if (typeof canvas.moveObjectTo === 'function') {
-        canvas.moveObjectTo(clone, insertIdx);
-      }
-    }
-    canvas.requestRenderAll();
+    await applyExtrudeParamsToTarget(canvas, selectedObject, {
+      extrudeType: 'small_back',
+      offsetX: extrudeDepthX * 2,
+      offsetY: extrudeDepthY * 2,
+      depth: 50,
+      colorMode: 'solid',
+      solidColor: extrudeColor,
+    });
     onCanvasUpdated('Extrude');
-    onToast?.('Applied 3D Extrude depth');
+    onToast?.('Applied 3D Extrude');
     onClose();
   };
 
@@ -1396,6 +1401,26 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
 
   const applyFilterEffect = async () => {
     if (!selectedObject || dialog.kind !== 'filter' || !previewSrcCanvas) return;
+    if (isEmbossDialog) {
+      if (!embossParams.enabled && (selectedObject as any).embossConfig) {
+        await removeEmbossFromTarget(canvas, selectedObject);
+        onCanvasUpdated('Remove Emboss');
+        onToast?.('Removed Emboss effect');
+        onClose();
+        return;
+      }
+      if (!embossParams.enabled) {
+        onClose();
+        return;
+      }
+      await applyEmbossParamsToTarget(canvas, selectedObject, embossParams);
+      onCanvasUpdated('Emboss');
+      onToast?.(
+        `Applied Emboss (Depth: ${embossParams.depth}, Level: ${embossParams.level}, ${embossParams.direction}°)`
+      );
+      onClose();
+      return;
+    }
     const processed = applyPixelEffectToCanvas(
       previewSrcCanvas,
       dialog.effectName,
@@ -1487,23 +1512,84 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
 
           {dialog.kind === 'filter' && (
             <div className="space-y-3">
-              <div className="w-full h-44 bg-[#444] border border-zinc-500 flex items-center justify-center overflow-hidden p-2">
-                <canvas ref={previewOutRef} className="max-w-full max-h-full object-contain" />
-              </div>
-              <div>
-                <div className="flex justify-between text-[11px] mb-1">
-                  <span>Effect Intensity / Amount</span>
-                  <span className="font-mono">{filterAmount}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={5}
-                  max={100}
-                  value={filterAmount}
-                  onChange={(e) => setFilterAmount(Number(e.target.value))}
-                  className="w-full accent-[#0078d7] cursor-pointer"
+              <div className="w-full h-44 bg-[#444] border border-zinc-500 flex items-center justify-center overflow-hidden p-2 relative">
+                <canvas
+                  ref={previewOutRef}
+                  onClick={(e) => {
+                    if (!isEmbossDialog || !embossEyedropper || !previewSrcCanvas || !previewOutRef.current) return;
+                    const sampled = sampleCanvasPixelHex(
+                      previewSrcCanvas,
+                      e.clientX,
+                      e.clientY,
+                      previewOutRef.current
+                    );
+                    if (sampled) {
+                      setEmbossParams((prev) => ({
+                        ...prev,
+                        colorMode: 'other',
+                        otherColor: sampled,
+                      }));
+                    }
+                    setEmbossEyedropper(false);
+                  }}
+                  className={`max-w-full max-h-full object-contain ${
+                    isEmbossDialog && embossEyedropper ? 'cursor-crosshair' : ''
+                  }`}
                 />
+                {isEmbossDialog && embossEyedropper && (
+                  <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/75 text-white text-[10px] pointer-events-none">
+                    Click preview to sample Emboss color
+                  </div>
+                )}
               </div>
+              {isEmbossDialog ? (
+                <EmbossControlsPanel
+                  params={embossParams}
+                  onChange={(next) => setEmbossParams(next)}
+                  onReset={() => setEmbossParams({ ...DEFAULT_EMBOSS_PARAMS })}
+                  theme={theme}
+                  collapsible={false}
+                  eyedropperActive={embossEyedropper}
+                  onTriggerEyedropper={async () => {
+                    if (embossEyedropper) {
+                      setEmbossEyedropper(false);
+                      return;
+                    }
+                    const EyeDropperCtor = (window as any).EyeDropper;
+                    if (typeof EyeDropperCtor === 'function') {
+                      try {
+                        const res = await new EyeDropperCtor().open();
+                        if (res?.sRGBHex) {
+                          setEmbossParams((prev) => ({
+                            ...prev,
+                            colorMode: 'other',
+                            otherColor: res.sRGBHex,
+                          }));
+                          return;
+                        }
+                      } catch {
+                        // Fall through to canvas preview sampler
+                      }
+                    }
+                    setEmbossEyedropper(true);
+                  }}
+                />
+              ) : (
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span>Effect Intensity / Amount</span>
+                    <span className="font-mono">{filterAmount}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={5}
+                    max={100}
+                    value={filterAmount}
+                    onChange={(e) => setFilterAmount(Number(e.target.value))}
+                    className="w-full accent-[#0078d7] cursor-pointer"
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -1634,10 +1720,17 @@ export const EffectToolsModal: React.FC<EffectToolsModalProps> = ({
                   onChange={(e) => setEnvelopePreset(e.target.value as any)}
                   className={`w-full h-6 px-1.5 border ${inputCls}`}
                 >
-                  <option value="arc_top">Perspective Arch</option>
-                  <option value="bulge">Horizontal Stretch / Bulge</option>
-                  <option value="skew_left">Slant Left Envelope</option>
-                  <option value="skew_right">Slant Right Envelope</option>
+                  <option value="arc_top">Inward Pinch (4-Side)</option>
+                  <option value="bulge">Bulge Out (4-Side)</option>
+                  <option value="skew_left">Slant Left</option>
+                  <option value="skew_right">Slant Right</option>
+                  {ENVELOPE_PRESETS.filter(
+                    (p) => !['inward_pinch', 'bulge_out', 'skew_left', 'skew_right'].includes(p.id)
+                  ).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

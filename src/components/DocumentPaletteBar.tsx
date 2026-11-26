@@ -1,7 +1,8 @@
-import React, { useRef } from 'react';
-import { ChevronLeft, ChevronRight, SlidersHorizontal, Plus } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, SlidersHorizontal, Plus, ImagePlus } from 'lucide-react';
 import { DocumentPaletteSwatch, ThemeMode } from '../types';
 import { formatCmykComponents } from '../utils/colorConversion';
+import { extractColorsFromDroppedTransfer } from '../utils/imageColorExtractor';
 
 interface DocumentPaletteBarProps {
   swatches: DocumentPaletteSwatch[];
@@ -10,6 +11,8 @@ interface DocumentPaletteBarProps {
   onSelectFill: (color: string) => void;
   onSelectStroke: (color: string) => void;
   onOpenPaletteEditor: (selectedIndex?: number) => void;
+  onAddExtractedColors?: (hexes: string[]) => void;
+  externalDragHover?: boolean;
   theme?: ThemeMode;
 }
 
@@ -20,26 +23,79 @@ export const DocumentPaletteBar: React.FC<DocumentPaletteBarProps> = ({
   onSelectFill,
   onSelectStroke,
   onOpenPaletteEditor,
+  onAddExtractedColors,
+  externalDragHover = false,
   theme = 'light',
 }) => {
   const isDark = theme === 'dark';
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragDepthRef = useRef(0);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleScroll = (delta: number) => {
     scrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   };
 
+  const isDropActive = isDragOver || externalDragHover;
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragOver(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragOver(false);
+    if (!e.dataTransfer || !onAddExtractedColors) return;
+    const colors = await extractColorsFromDroppedTransfer(e.dataTransfer, {
+      maxColors: 48,
+      minDistance: 24,
+    });
+    onAddExtractedColors(colors);
+  };
+
   return (
     <div
+      data-document-palette-bar="true"
       aria-label="Document Palette"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => void handleDrop(e)}
       onDoubleClick={(e) => {
         // Double-clicking anywhere on the empty bottom palette strip opens Palette Editor
         if (e.target === e.currentTarget || e.target === scrollRef.current) {
           onOpenPaletteEditor(0);
         }
       }}
-      className={`h-[26px] border-t px-1.5 flex items-center gap-1 select-none shrink-0 ${
-        isDark
+      className={`relative h-[26px] border-t px-1.5 flex items-center gap-1 select-none shrink-0 transition-colors ${
+        isDropActive
+          ? isDark
+            ? 'bg-[#005a9e]/35 border-[#38bdf8] text-white ring-1 ring-inset ring-[#38bdf8]'
+            : 'bg-[#dbeafe] border-[#0078d7] text-[#005a9e] ring-1 ring-inset ring-[#0078d7]'
+          : isDark
           ? 'bg-[#4c4f55] border-[#646870] text-zinc-200'
           : 'bg-[#ededef] border-[#cfd1d6] text-zinc-700'
       }`}
@@ -48,7 +104,7 @@ export const DocumentPaletteBar: React.FC<DocumentPaletteBarProps> = ({
       <button
         type="button"
         onClick={() => onOpenPaletteEditor(0)}
-        title="Open Document Palette Editor (Double-click any color swatch)"
+        title="Open Document Palette Editor (or drop an image here to extract its colors)"
         className={`h-[20px] px-1.5 flex items-center gap-1 rounded-xs text-[10px] font-medium shrink-0 transition ${
           isDark ? 'hover:bg-[#5b5f67] text-zinc-200' : 'hover:bg-[#d8dadf] text-zinc-700'
         }`}
@@ -101,15 +157,20 @@ export const DocumentPaletteBar: React.FC<DocumentPaletteBarProps> = ({
         }}
         className="flex-1 flex items-center gap-[2px] overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {swatches.length === 0 ? (
+        {isDropActive ? (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 truncate">
+            <ImagePlus className="w-3.5 h-3.5 shrink-0" />
+            <span>Drop image to add all its colors to Document Palette</span>
+          </span>
+        ) : swatches.length === 0 ? (
           <span
             onDoubleClick={() => onOpenPaletteEditor(0)}
             className={`text-[10px] italic px-1.5 truncate cursor-pointer ${
               isDark ? 'text-zinc-300' : 'text-zinc-500'
             }`}
-            title="Select any color to add it here • Double-click to open Palette Editor"
+            title="Select a color or drag & drop an image here to extract all its colors"
           >
-            Select any color to add to current document • Double-click for Palette Editor
+            Select any color or drag &amp; drop an image here to add its colors • Double-click for Palette Editor
           </span>
         ) : (
           swatches.map((swatch, index) => {

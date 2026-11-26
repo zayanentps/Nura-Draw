@@ -264,6 +264,7 @@ export const DockersSidebar: React.FC<DockersSidebarProps> = ({
                 properties={properties}
                 onUpdateProperties={onUpdateProperties}
                 theme={theme}
+                onRefresh={onRefresh}
               />
             )}
 

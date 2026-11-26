@@ -38,6 +38,7 @@ import { importFromJSON, exportAsSVG, exportAsPNG, exportAsPDF, exportAsNDR, exp
 import { pxToUnit, UNITS_DATA } from './utils/units';
 import { separateObjectToCmykPlates } from './utils/cmykSeparation';
 import {
+  disableObjectCaching,
   ensureObjectId,
   getObjectLabel,
   alignObjects,
@@ -94,6 +95,55 @@ import {
   reflowTextOnPathGroup,
   straightenTextOnPathToIText,
 } from './utils/fitTextToPath';
+import {
+  applyShadowToTarget,
+  extractTargetShadowForUi,
+  formatShadowRgba,
+  getShadowMetrics,
+  polarToOffset,
+} from './utils/shadowHelpers';
+import {
+  ContourDirection,
+  DEFAULT_CONTOUR_PARAMS,
+  applyContourParamsToTarget,
+  extractTargetContourForUi,
+  removeContourFromTarget,
+  resolveContourParent,
+} from './utils/contourHelpers';
+import {
+  BlendColorMode,
+  DEFAULT_BLEND_PARAMS,
+  applyBlendBetweenObjects,
+  removeBlendByObject,
+  resolveBlendGroup,
+} from './utils/blendHelpers';
+import {
+  ExtrudeColorMode,
+  ExtrudeType,
+  DEFAULT_EXTRUDE_PARAMS,
+  applyExtrudeParamsToTarget,
+  extractTargetExtrudeForUi,
+  removeExtrudeFromTarget,
+  resolveExtrudeParent,
+} from './utils/extrudeHelpers';
+import {
+  EnvelopeMode,
+  DEFAULT_ENVELOPE_MODE,
+  applyEnvelopeCageToTarget,
+  applyEnvelopePresetToTarget,
+  clearEnvelopeFromTarget,
+  extractOrInitEnvelopeConfig,
+  resetEnvelopeOnTarget,
+} from './utils/envelopeHelpers';
+import {
+  BlockShadowParams,
+  DEFAULT_BLOCK_SHADOW_PARAMS,
+  applyBlockShadowParamsToTarget,
+  extractTargetBlockShadowForUi,
+  removeBlockShadowFromTarget,
+  resolveBlockShadowParent,
+} from './utils/blockShadowHelpers';
+import { extractColorsFromImageElement } from './utils/imageColorExtractor';
 
 export default function App() {
   // Document metadata & pages (Exact match with TraceDraw image_2b0a935b.png)
@@ -389,6 +439,141 @@ export default function App() {
     }, 2800);
   }, []);
 
+  const [paletteImageDragHover, setPaletteImageDragHover] = useState<boolean>(false);
+  const draggedCanvasImageRef = useRef<{
+    img: fabric.FabricObject;
+    startLeft: number;
+    startTop: number;
+  } | null>(null);
+
+  const handleAddExtractedImageColors = useCallback(
+    (rawHexes: string[]) => {
+      const uniqueNormalized: string[] = [];
+      const batchSeen = new Set<string>();
+      for (const raw of rawHexes) {
+        const hex = normalizeHex(raw);
+        if (hex && !batchSeen.has(hex)) {
+          batchSeen.add(hex);
+          uniqueNormalized.push(hex);
+        }
+      }
+
+      if (uniqueNormalized.length === 0) {
+        showToast('Could not extract colors from dropped image');
+        return;
+      }
+
+      const existingSet = new Set(
+        (docPalettes[activeDocTab] || []).map((sw) => sw.hex.toLowerCase())
+      );
+      const newHexes = uniqueNormalized.filter((hex) => !existingSet.has(hex.toLowerCase()));
+
+      if (newHexes.length === 0) {
+        showToast(`All ${uniqueNormalized.length} image colors are already in Document Palette`);
+        return;
+      }
+
+      const now = Date.now();
+      const addedSwatches: DocumentPaletteSwatch[] = newHexes.map((hex, idx) => ({
+        id: `doc-img-${now}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        name: resolveColorName(hex),
+        hex,
+        treatAs: 'Process',
+        cmyk: formatCmykComponents(hex),
+      }));
+
+      setDocPalettes((prev) => {
+        const list = prev[activeDocTab] || [];
+        const prevSet = new Set(list.map((sw) => sw.hex.toLowerCase()));
+        const filtered = addedSwatches.filter((sw) => !prevSet.has(sw.hex.toLowerCase()));
+        if (filtered.length === 0) return prev;
+        return {
+          ...prev,
+          [activeDocTab]: [...list, ...filtered],
+        };
+      });
+
+      showToast(
+        `Added ${newHexes.length} color${newHexes.length === 1 ? '' : 's'} from image to Document Palette`
+      );
+    },
+    [activeDocTab, docPalettes, showToast]
+  );
+
+  // Allow dragging an existing image from the canvas onto the bottom Document Palette bar
+  useEffect(() => {
+    if (!canvas) return;
+
+    const isOverPaletteBar = (clientX: number, clientY: number) => {
+      const el = document.querySelector('[data-document-palette-bar="true"]');
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    };
+
+    const onMouseDown = (opt: any) => {
+      if (activeTool !== 'pick' && activeTool !== 'freehand_pick') return;
+      const target = opt?.target as fabric.FabricObject | undefined;
+      if (target && (target.type === 'image' || typeof (target as any).getElement === 'function')) {
+        draggedCanvasImageRef.current = {
+          img: target,
+          startLeft: target.left || 0,
+          startTop: target.top || 0,
+        };
+      } else {
+        draggedCanvasImageRef.current = null;
+      }
+    };
+
+    const onWindowMouseMove = (e: MouseEvent) => {
+      if (!draggedCanvasImageRef.current) return;
+      if (e.buttons === 0) {
+        draggedCanvasImageRef.current = null;
+        setPaletteImageDragHover(false);
+        return;
+      }
+      setPaletteImageDragHover(isOverPaletteBar(e.clientX, e.clientY));
+    };
+
+    const onWindowMouseUp = (e: MouseEvent) => {
+      const dragInfo = draggedCanvasImageRef.current;
+      draggedCanvasImageRef.current = null;
+      setPaletteImageDragHover(false);
+      if (!dragInfo) return;
+
+      if (isOverPaletteBar(e.clientX, e.clientY)) {
+        const { img, startLeft, startTop } = dragInfo;
+        (canvas as any)._currentTransform = null;
+        img.set({ left: startLeft, top: startTop });
+        img.setCoords();
+        canvas.requestRenderAll();
+        requestAnimationFrame(() => {
+          img.set({ left: startLeft, top: startTop });
+          img.setCoords();
+          canvas.requestRenderAll();
+        });
+
+        const imgEl = typeof (img as any).getElement === 'function' ? (img as any).getElement() : null;
+        if (imgEl) {
+          const extracted = extractColorsFromImageElement(imgEl, {
+            maxColors: 48,
+            minDistance: 24,
+          });
+          handleAddExtractedImageColors(extracted);
+        }
+      }
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp, true);
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp, true);
+    };
+  }, [canvas, activeTool, handleAddExtractedImageColors]);
+
   // Real-time collaboration state
   const [roomId, setRoomId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -403,9 +588,13 @@ export default function App() {
   const [isConnected, setIsConnected] = useState<boolean>(false);
 
   // History stack for Undo / Redo + Edit Menu state
+  const canvasRef = useRef<fabric.Canvas | null>(null);
   const historyRef = useRef<string[]>([]);
   const undoLabelsRef = useRef<string[]>(['']);
   const historyIndexRef = useRef<number>(-1);
+  const isRestoringHistoryRef = useRef<boolean>(false);
+  const pendingHistoryTimerRef = useRef<number | null>(null);
+  const pendingHistoryLabelRef = useRef<string>('Modify');
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
   const [undoLabel, setUndoLabel] = useState<string>('');
@@ -800,17 +989,52 @@ export default function App() {
     'symmetryCopyIndex',
     'metallicEffectConfig',
     'preMetallicBackup',
+    'isGuideline',
+    'guideOrientation',
+    'excludeFromExport',
+    'contourConfig',
+    'isContourStep',
+    'contourParentId',
+    'contourStepIndex',
+    'blendConfig',
+    'isBlendStep',
+    'blendId',
+    'blendSourceId',
+    'blendTargetId',
+    'blendStepIndex',
+    'extrudeConfig',
+    'isExtrudeBody',
+    'extrudeId',
+    'extrudeParentId',
+    'envelopeConfig',
+    'blockShadowConfig',
+    'isBlockShadow',
+    'blockShadowId',
+    'blockShadowParentId',
+    'embossConfig',
+    'embossSourceId',
+    'embossSourceDataUrl',
+    'preEmbossObjectJson',
   ];
 
   // Push history state helper
   const pushHistory = useCallback((actionLabel = 'Modify') => {
-    if (!canvas) return;
+    if (pendingHistoryTimerRef.current !== null) {
+      window.clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+    }
+    const activeCanvas = canvasRef.current || canvas;
+    if (!activeCanvas || isRestoringHistoryRef.current) return;
     try {
-      const json = JSON.stringify(canvas.toObject(SERIALIZE_PROPERTIES as any));
+      const label = typeof actionLabel === 'string' ? actionLabel : 'Modify';
+      const json = JSON.stringify(activeCanvas.toObject(SERIALIZE_PROPERTIES as any));
+      if (historyIndexRef.current >= 0 && historyRef.current[historyIndexRef.current] === json) {
+        return;
+      }
       const newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
       const newLabels = undoLabelsRef.current.slice(0, historyIndexRef.current + 1);
       newHistory.push(json);
-      newLabels.push(actionLabel);
+      newLabels.push(label);
       if (newHistory.length > 50) {
         newHistory.shift();
         newLabels.shift();
@@ -843,7 +1067,30 @@ export default function App() {
     }
   }, [canvas]);
 
+  const flushPendingHistory = useCallback(() => {
+    if (pendingHistoryTimerRef.current !== null) {
+      window.clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+      pushHistory(pendingHistoryLabelRef.current);
+    }
+  }, [pushHistory]);
+
+  const scheduleDebouncedHistory = useCallback(
+    (actionLabel = 'Edit Properties', delayMs = 260) => {
+      pendingHistoryLabelRef.current = actionLabel;
+      if (pendingHistoryTimerRef.current !== null) {
+        window.clearTimeout(pendingHistoryTimerRef.current);
+      }
+      pendingHistoryTimerRef.current = window.setTimeout(() => {
+        pendingHistoryTimerRef.current = null;
+        pushHistory(pendingHistoryLabelRef.current);
+      }, delayMs);
+    },
+    [pushHistory]
+  );
+
   const handleRegisterCanvas = useCallback((canvasInstance: fabric.Canvas) => {
+    canvasRef.current = canvasInstance;
     setCanvas(canvasInstance);
     // Push first state
     setTimeout(() => {
@@ -1024,7 +1271,10 @@ export default function App() {
 
   // Undo (Ctrl+Z) / Redo (Ctrl+Shift+Z / Ctrl+Y) NuraDraw implementation
   const handleUndo = useCallback(async () => {
-    if (!canvas || historyIndexRef.current <= 0) return;
+    flushPendingHistory();
+    const activeCanvas = canvasRef.current || canvas;
+    if (!activeCanvas || isRestoringHistoryRef.current || historyIndexRef.current <= 0) return;
+    isRestoringHistoryRef.current = true;
     try {
       groupEditStackRef.current = [];
       setGroupEditStack([]);
@@ -1032,22 +1282,40 @@ export default function App() {
       const jsonStr = historyRef.current[historyIndexRef.current];
       if (jsonStr) {
         const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-        await canvas.loadFromJSON(parsed);
-        canvas.discardActiveObject();
-        canvas.requestRenderAll();
+        await activeCanvas.loadFromJSON(parsed);
+        activeCanvas.forEachObject((obj) => disableObjectCaching(obj));
+        activeCanvas.discardActiveObject();
+        (activeCanvas as any).fire('history:restored');
+        activeCanvas.requestRenderAll();
         setSelectedObject(null);
         setCanUndo(historyIndexRef.current > 0);
         setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
         setUndoLabel(historyIndexRef.current > 0 ? undoLabelsRef.current[historyIndexRef.current] || '' : '');
-        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'sync');
+        setIsDirty(
+          lastSavedSnapshotRef.current
+            ? jsonStr !== lastSavedSnapshotRef.current
+            : historyIndexRef.current > 0
+        );
+        socketService.sendCanvasUpdate(activeCanvas.toObject(SERIALIZE_PROPERTIES as any), 'sync');
       }
     } catch (e) {
       console.error('Failed to undo canvas state', e);
+    } finally {
+      isRestoringHistoryRef.current = false;
     }
-  }, [canvas]);
+  }, [canvas, flushPendingHistory]);
 
   const handleRedo = useCallback(async () => {
-    if (!canvas || historyIndexRef.current >= historyRef.current.length - 1) return;
+    flushPendingHistory();
+    const activeCanvas = canvasRef.current || canvas;
+    if (
+      !activeCanvas ||
+      isRestoringHistoryRef.current ||
+      historyIndexRef.current >= historyRef.current.length - 1
+    ) {
+      return;
+    }
+    isRestoringHistoryRef.current = true;
     try {
       groupEditStackRef.current = [];
       setGroupEditStack([]);
@@ -1055,47 +1323,60 @@ export default function App() {
       const jsonStr = historyRef.current[historyIndexRef.current];
       if (jsonStr) {
         const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-        await canvas.loadFromJSON(parsed);
-        canvas.discardActiveObject();
-        canvas.requestRenderAll();
+        await activeCanvas.loadFromJSON(parsed);
+        activeCanvas.forEachObject((obj) => disableObjectCaching(obj));
+        activeCanvas.discardActiveObject();
+        (activeCanvas as any).fire('history:restored');
+        activeCanvas.requestRenderAll();
         setSelectedObject(null);
-        setCanUndo(true);
+        setCanUndo(historyIndexRef.current > 0);
         setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
         setUndoLabel(undoLabelsRef.current[historyIndexRef.current] || '');
-        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'sync');
+        setIsDirty(
+          lastSavedSnapshotRef.current
+            ? jsonStr !== lastSavedSnapshotRef.current
+            : historyIndexRef.current > 0
+        );
+        socketService.sendCanvasUpdate(activeCanvas.toObject(SERIALIZE_PROPERTIES as any), 'sync');
       }
     } catch (e) {
       console.error('Failed to redo canvas state', e);
+    } finally {
+      isRestoringHistoryRef.current = false;
     }
-  }, [canvas]);
+  }, [canvas, flushPendingHistory]);
 
   const handleBringForward = useCallback(() => {
     if (!selectedObject || !canvas) return;
     canvas.bringObjectForward(selectedObject);
     canvas.renderAll();
     socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-  }, [canvas, selectedObject]);
+    pushHistory('Bring Forward');
+  }, [canvas, selectedObject, pushHistory]);
 
   const handleSendBackward = useCallback(() => {
     if (!selectedObject || !canvas) return;
     canvas.sendObjectBackwards(selectedObject);
     canvas.renderAll();
     socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-  }, [canvas, selectedObject]);
+    pushHistory('Send Backward');
+  }, [canvas, selectedObject, pushHistory]);
 
   const handleBringToFront = useCallback(() => {
     if (!selectedObject || !canvas) return;
     canvas.bringObjectToFront(selectedObject);
     canvas.renderAll();
     socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-  }, [canvas, selectedObject]);
+    pushHistory('Bring to Front');
+  }, [canvas, selectedObject, pushHistory]);
 
   const handleSendToBack = useCallback(() => {
     if (!selectedObject || !canvas) return;
     canvas.sendObjectToBack(selectedObject);
     canvas.renderAll();
     socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-  }, [canvas, selectedObject]);
+    pushHistory('Send to Back');
+  }, [canvas, selectedObject, pushHistory]);
 
   const handleConvertToCurves = useCallback(() => {
     if (!canvas) return;
@@ -1562,7 +1843,8 @@ export default function App() {
     selectedObject.setCoords();
     canvas.renderAll();
     socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
-  }, [canvas, selectedObject]);
+    pushHistory('Align to Pixel Grid');
+  }, [canvas, selectedObject, pushHistory]);
 
   const handleAlign = useCallback(
     (alignment: AlignMode, target: AlignTarget = 'objects') => {
@@ -2448,7 +2730,9 @@ export default function App() {
         return;
       }
 
-      const allObjs = canvas.getObjects().filter((o) => o.selectable !== false && o.visible !== false);
+      const allObjs = canvas
+        .getObjects()
+        .filter((o) => o.selectable !== false && o.visible !== false && !(o as any).isGuideline);
       let matched = allObjs;
       if (mode === 'text') {
         matched = allObjs.filter((o) => o.type === 'i-text' || o.type === 'text' || o.type === 'textbox');
@@ -2762,7 +3046,9 @@ export default function App() {
   // Zoom To Fit All Objects (F4)
   const handleZoomToFitObjects = useCallback(() => {
     if (!canvas) return;
-    const objs = canvas.getObjects().filter((o) => o.visible !== false);
+    const objs = canvas
+      .getObjects()
+      .filter((o) => o.visible !== false && !(o as any).isGuideline);
     if (objs.length === 0) {
       setZoomLevel(0.85);
       return;
@@ -2896,7 +3182,10 @@ export default function App() {
       // Ctrl+Z / Cmd+Z = Undo (NuraDraw shortcut)
       if (isCtrlOrCmd && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
-        handleUndo();
+        e.stopPropagation();
+        if (!e.repeat) {
+          void handleUndo();
+        }
         return;
       }
 
@@ -2907,7 +3196,10 @@ export default function App() {
         (isCtrlOrCmd && !e.altKey && e.shiftKey && (e.key === 'z' || e.key === 'Z'))
       ) {
         e.preventDefault();
-        handleRedo();
+        e.stopPropagation();
+        if (!e.repeat) {
+          void handleRedo();
+        }
         return;
       }
 
@@ -3580,6 +3872,7 @@ export default function App() {
         sel.setCoords();
         canvas.renderAll();
         if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+        scheduleDebouncedHistory('Edit Properties');
         socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
         return;
       }
@@ -3598,6 +3891,7 @@ export default function App() {
           const rebuilt = reflowTextOnPathGroup(canvas, selectedObject as fabric.Group, patch);
           if (rebuilt) {
             setSelectedObject(rebuilt);
+            scheduleDebouncedHistory('Edit Text on Path');
             socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
             return;
           }
@@ -3625,6 +3919,7 @@ export default function App() {
           );
           if (rebuilt) {
             setSelectedObject(rebuilt);
+            scheduleDebouncedHistory('Edit Dimension');
             socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
             return;
           }
@@ -3683,9 +3978,543 @@ export default function App() {
       selectedObject.setCoords();
       canvas.renderAll();
       if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+      scheduleDebouncedHistory('Edit Properties');
       socketService.sendCanvasUpdate(canvas.toJSON(), 'modify');
     },
-    [selectedObject, canvas, pageConfig.units, recordDocumentColor, syncSymmetryMirrors]
+    [selectedObject, canvas, pageConfig.units, recordDocumentColor, syncSymmetryMirrors, scheduleDebouncedHistory]
+  );
+
+  const handleUpdateShadow = useCallback(
+    (
+      patch: {
+        offsetX?: number;
+        offsetY?: number;
+        distance?: number;
+        angle?: number;
+        blur?: number;
+        transparency?: number;
+        colorHex?: string;
+        remove?: boolean;
+      },
+      commit: boolean = true
+    ) => {
+      if (patch.remove) {
+        if (selectedObject && canvas) {
+          applyShadowToTarget(selectedObject, null);
+          canvas.requestRenderAll();
+          if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+          if (commit) {
+            pushHistory('Remove Drop Shadow');
+            socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          }
+        }
+        return;
+      }
+
+      const activeShadow = extractTargetShadowForUi(selectedObject);
+      const base = getShadowMetrics(activeShadow, {
+        color: properties.shadowColor,
+        blur: properties.shadowBlur,
+        offsetX: properties.shadowOffsetX,
+        offsetY: properties.shadowOffsetY,
+      });
+
+      const nextBlur = patch.blur !== undefined ? Math.max(0, patch.blur) : base.blur;
+      const nextTransparency =
+        patch.transparency !== undefined
+          ? Math.max(0, Math.min(100, Math.round(patch.transparency)))
+          : base.transparency;
+      const nextColorHex = patch.colorHex !== undefined ? patch.colorHex : base.colorHex;
+
+      let nextOffsetX = base.offsetX;
+      let nextOffsetY = base.offsetY;
+      if (patch.offsetX !== undefined || patch.offsetY !== undefined) {
+        nextOffsetX = patch.offsetX ?? base.offsetX;
+        nextOffsetY = patch.offsetY ?? base.offsetY;
+      } else if (patch.distance !== undefined || patch.angle !== undefined) {
+        const polar = polarToOffset(
+          patch.distance !== undefined ? Math.max(0, patch.distance) : base.distance,
+          patch.angle !== undefined ? patch.angle : base.angle
+        );
+        nextOffsetX = polar.offsetX;
+        nextOffsetY = polar.offsetY;
+      }
+
+      const nextRgba = formatShadowRgba(nextColorHex, Math.max(0, Math.min(1, 1 - nextTransparency / 100)));
+      setProperties((prev) => ({
+        ...prev,
+        shadowColor: nextRgba,
+        shadowBlur: nextBlur,
+        shadowOffsetX: nextOffsetX,
+        shadowOffsetY: nextOffsetY,
+      }));
+
+      if (selectedObject && canvas && !(selectedObject as any).isGuideline && !(selectedObject as any).isDimension) {
+        applyShadowToTarget(selectedObject, {
+          offsetX: nextOffsetX,
+          offsetY: nextOffsetY,
+          blur: nextBlur,
+          transparency: nextTransparency,
+          colorHex: nextColorHex,
+        });
+        canvas.requestRenderAll();
+        if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+        if (commit) {
+          pushHistory('Drop Shadow');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+      }
+    },
+    [selectedObject, canvas, properties, pushHistory, syncSymmetryMirrors]
+  );
+
+  const handleUpdateContour = useCallback(
+    async (
+      patch: {
+        direction?: ContourDirection;
+        steps?: number;
+        offsetPx?: number;
+        outlineColor?: string;
+        fillColor?: string;
+        remove?: boolean;
+      },
+      commit: boolean = true
+    ) => {
+      if (!canvas || !selectedObject) return;
+      const target = resolveContourParent(canvas, selectedObject) || selectedObject;
+      if ((target as any).isGuideline || (target as any).isDimension) return;
+
+      if (patch.remove) {
+        const removed = removeContourFromTarget(canvas, target);
+        canvas.setActiveObject(target);
+        setSelectedObject(target);
+        canvas.requestRenderAll();
+        setProperties((prev) => ({
+          ...prev,
+          contourDirection: DEFAULT_CONTOUR_PARAMS.direction,
+          contourSteps: DEFAULT_CONTOUR_PARAMS.steps,
+          contourOffset: DEFAULT_CONTOUR_PARAMS.offsetPx,
+          contourOutlineColor: DEFAULT_CONTOUR_PARAMS.outlineColor,
+          contourFillColor: DEFAULT_CONTOUR_PARAMS.fillColor,
+        }));
+        if (removed > 0 && commit) {
+          pushHistory('Remove Contour');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      const cur = extractTargetContourForUi(canvas, target).params;
+      const nextParams = {
+        direction: patch.direction ?? (properties.contourDirection || cur.direction),
+        steps:
+          patch.steps !== undefined
+            ? Math.max(1, Math.min(50, Math.round(patch.steps)))
+            : (properties.contourSteps ?? cur.steps),
+        offsetPx:
+          patch.offsetPx !== undefined
+            ? Math.max(1, Math.min(250, Math.round(patch.offsetPx * 10) / 10))
+            : (properties.contourOffset ?? cur.offsetPx),
+        outlineColor: patch.outlineColor ?? (properties.contourOutlineColor || cur.outlineColor),
+        fillColor: patch.fillColor ?? (properties.contourFillColor || cur.fillColor),
+      };
+
+      setProperties((prev) => ({
+        ...prev,
+        contourDirection: nextParams.direction,
+        contourSteps: nextParams.steps,
+        contourOffset: nextParams.offsetPx,
+        contourOutlineColor: nextParams.outlineColor,
+        contourFillColor: nextParams.fillColor,
+      }));
+
+      await applyContourParamsToTarget(canvas, target, nextParams, {
+        lockForContourTool: activeTool === 'contour',
+      });
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+      if (commit) {
+        pushHistory('Contour');
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      }
+    },
+    [selectedObject, canvas, activeTool, properties, pushHistory, syncSymmetryMirrors]
+  );
+
+  const handleUpdateBlend = useCallback(
+    async (
+      patch: {
+        steps?: number;
+        colorMode?: BlendColorMode;
+        accelObject?: number;
+        accelColor?: number;
+        remove?: boolean;
+      },
+      commit: boolean = true
+    ) => {
+      if (!canvas || !selectedObject) return;
+
+      if (patch.remove) {
+        const res = removeBlendByObject(canvas, selectedObject);
+        const focusObj = res.source || res.target || selectedObject;
+        if (focusObj && focusObj.type !== 'activeselection') {
+          canvas.setActiveObject(focusObj);
+          setSelectedObject(focusObj);
+        }
+        canvas.requestRenderAll();
+        setProperties((prev) => ({
+          ...prev,
+          blendSteps: DEFAULT_BLEND_PARAMS.steps,
+          blendColorMode: DEFAULT_BLEND_PARAMS.colorMode,
+          blendAccelObject: DEFAULT_BLEND_PARAMS.accelObject,
+          blendAccelColor: DEFAULT_BLEND_PARAMS.accelColor,
+        }));
+        if (res.removed > 0 && commit) {
+          pushHistory('Clear Blend');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      const nextSteps =
+        patch.steps !== undefined
+          ? Math.max(1, Math.min(50, Math.round(patch.steps)))
+          : (properties.blendSteps ?? DEFAULT_BLEND_PARAMS.steps);
+      const nextColorMode: BlendColorMode =
+        patch.colorMode ?? properties.blendColorMode ?? DEFAULT_BLEND_PARAMS.colorMode;
+      const nextAccelObj =
+        patch.accelObject !== undefined
+          ? Math.max(-100, Math.min(100, Math.round(patch.accelObject)))
+          : (properties.blendAccelObject ?? DEFAULT_BLEND_PARAMS.accelObject);
+      const nextAccelCol =
+        patch.accelColor !== undefined
+          ? Math.max(-100, Math.min(100, Math.round(patch.accelColor)))
+          : (properties.blendAccelColor ?? DEFAULT_BLEND_PARAMS.accelColor);
+
+      const resolved = resolveBlendGroup(canvas, selectedObject);
+      let sourceObj: fabric.FabricObject | null = resolved?.source || null;
+      let targetObj: fabric.FabricObject | null = resolved?.target || null;
+
+      if ((!sourceObj || !targetObj) && selectedObject.type === 'activeselection') {
+        const items = (selectedObject as fabric.ActiveSelection).getObjects();
+        if (items.length >= 2) {
+          sourceObj = items[0];
+          targetObj = items[items.length - 1];
+          canvas.discardActiveObject();
+        }
+      }
+
+      setProperties((prev) => ({
+        ...prev,
+        blendSteps: nextSteps,
+        blendColorMode: nextColorMode,
+        blendAccelObject: nextAccelObj,
+        blendAccelColor: nextAccelCol,
+      }));
+
+      if (sourceObj && targetObj && sourceObj !== targetObj) {
+        const res = await applyBlendBetweenObjects(
+          canvas,
+          sourceObj,
+          targetObj,
+          {
+            steps: nextSteps,
+            colorMode: nextColorMode,
+            accelObject: nextAccelObj,
+            accelColor: nextAccelCol,
+          },
+          { lockForBlendTool: activeTool === 'blend', blendId: resolved?.blendId }
+        );
+        if (res) {
+          canvas.setActiveObject(res.source);
+          setSelectedObject(res.source);
+          if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+          if (commit) {
+            pushHistory('Blend');
+            socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+          }
+        }
+      }
+    },
+    [selectedObject, canvas, activeTool, properties, pushHistory, syncSymmetryMirrors]
+  );
+
+  const handleUpdateExtrude = useCallback(
+    async (
+      patch: {
+        extrudeType?: ExtrudeType;
+        offsetX?: number;
+        offsetY?: number;
+        depth?: number;
+        colorMode?: ExtrudeColorMode;
+        solidColor?: string;
+        shadeColor?: string;
+        lightIntensity?: number;
+        showOutline?: boolean;
+        remove?: boolean;
+      },
+      commit: boolean = true
+    ) => {
+      if (!canvas || !selectedObject) return;
+      const target = resolveExtrudeParent(canvas, selectedObject) || selectedObject;
+      if ((target as any).isGuideline || (target as any).isDimension) return;
+
+      if (patch.remove) {
+        const res = removeExtrudeFromTarget(canvas, target);
+        canvas.setActiveObject(res.parent);
+        setSelectedObject(res.parent);
+        canvas.requestRenderAll();
+        setProperties((prev) => ({
+          ...prev,
+          extrudeType: DEFAULT_EXTRUDE_PARAMS.extrudeType,
+          extrudeOffsetX: DEFAULT_EXTRUDE_PARAMS.offsetX,
+          extrudeOffsetY: DEFAULT_EXTRUDE_PARAMS.offsetY,
+          extrudeDepth: DEFAULT_EXTRUDE_PARAMS.depth,
+          extrudeColorMode: DEFAULT_EXTRUDE_PARAMS.colorMode,
+          extrudeColor: DEFAULT_EXTRUDE_PARAMS.solidColor,
+          extrudeShadeColor: DEFAULT_EXTRUDE_PARAMS.shadeColor,
+          extrudeLight: DEFAULT_EXTRUDE_PARAMS.lightIntensity,
+          extrudeOutline: DEFAULT_EXTRUDE_PARAMS.showOutline,
+        }));
+        if (res.removed > 0 && commit) {
+          pushHistory('Clear Extrude');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      const cur = extractTargetExtrudeForUi(canvas, target);
+      const base = cur.hasExtrude ? cur.params : DEFAULT_EXTRUDE_PARAMS;
+      const nextParams = {
+        extrudeType: patch.extrudeType ?? properties.extrudeType ?? base.extrudeType,
+        offsetX: patch.offsetX ?? properties.extrudeOffsetX ?? base.offsetX,
+        offsetY: patch.offsetY ?? properties.extrudeOffsetY ?? base.offsetY,
+        depth:
+          patch.depth !== undefined
+            ? Math.max(1, Math.min(95, Math.round(patch.depth)))
+            : (properties.extrudeDepth ?? base.depth),
+        colorMode: patch.colorMode ?? properties.extrudeColorMode ?? base.colorMode,
+        solidColor: patch.solidColor ?? properties.extrudeColor ?? base.solidColor,
+        shadeColor: patch.shadeColor ?? properties.extrudeShadeColor ?? base.shadeColor,
+        lightIntensity:
+          patch.lightIntensity !== undefined
+            ? Math.max(0, Math.min(100, Math.round(patch.lightIntensity)))
+            : (properties.extrudeLight ?? base.lightIntensity),
+        showOutline: patch.showOutline ?? properties.extrudeOutline ?? base.showOutline,
+      };
+
+      setProperties((prev) => ({
+        ...prev,
+        extrudeType: nextParams.extrudeType,
+        extrudeOffsetX: nextParams.offsetX,
+        extrudeOffsetY: nextParams.offsetY,
+        extrudeDepth: nextParams.depth,
+        extrudeColorMode: nextParams.colorMode,
+        extrudeColor: nextParams.solidColor,
+        extrudeShadeColor: nextParams.shadeColor,
+        extrudeLight: nextParams.lightIntensity,
+        extrudeOutline: nextParams.showOutline,
+      }));
+
+      await applyExtrudeParamsToTarget(canvas, target, nextParams, {
+        lockForExtrudeTool: activeTool === 'extrude',
+      });
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+      if (commit) {
+        pushHistory('Extrude 3D');
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      }
+    },
+    [selectedObject, canvas, activeTool, properties, pushHistory, syncSymmetryMirrors]
+  );
+
+  const handleUpdateEnvelope = useCallback(
+    (
+      patch: {
+        presetId?: string;
+        mode?: EnvelopeMode;
+        mirrorOpposite?: boolean;
+        reset?: boolean;
+        remove?: boolean;
+      },
+      commit: boolean = true
+    ) => {
+      if (patch.mirrorOpposite !== undefined && !patch.presetId && !patch.mode && !patch.reset && !patch.remove) {
+        setProperties((prev) => ({ ...prev, envelopeMirror: patch.mirrorOpposite }));
+        return;
+      }
+
+      if (patch.mode !== undefined) {
+        setProperties((prev) => ({ ...prev, envelopeMode: patch.mode }));
+      }
+      if (patch.mirrorOpposite !== undefined) {
+        setProperties((prev) => ({ ...prev, envelopeMirror: patch.mirrorOpposite }));
+      }
+
+      if (!canvas || !selectedObject) return;
+      const target = selectedObject;
+      if ((target as any).isGuideline || (target as any).isDimension || target.type === 'activeselection') return;
+
+      let result: fabric.FabricObject = target;
+      if (patch.remove) {
+        result = clearEnvelopeFromTarget(canvas, target);
+        if (activeTool === 'envelope') {
+          result.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: false,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+        }
+        canvas.setActiveObject(result);
+        setSelectedObject(result);
+        setProperties((prev) => ({
+          ...prev,
+          envelopeMode: DEFAULT_ENVELOPE_MODE,
+        }));
+        (canvas as any).fire('envelope:updated', { target: result });
+        canvas.requestRenderAll();
+        if (commit) {
+          pushHistory('Clear Envelope');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      if (patch.reset) {
+        result = resetEnvelopeOnTarget(canvas, target, {
+          lockForEnvelopeTool: activeTool === 'envelope',
+        });
+        setSelectedObject(result);
+        (canvas as any).fire('envelope:updated', { target: result });
+        if (commit) {
+          pushHistory('Reset Envelope');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      if (patch.presetId) {
+        result = applyEnvelopePresetToTarget(canvas, target, patch.presetId, 0.35, {
+          lockForEnvelopeTool: activeTool === 'envelope',
+        });
+        const nextCfg = extractOrInitEnvelopeConfig(result);
+        setProperties((prev) => ({
+          ...prev,
+          envelopeMode: nextCfg.mode,
+        }));
+        setSelectedObject(result);
+        (canvas as any).fire('envelope:updated', { target: result });
+        if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+        if (commit) {
+          pushHistory('Envelope Preset');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      if (patch.mode) {
+        const cur = extractOrInitEnvelopeConfig(target);
+        result = applyEnvelopeCageToTarget(canvas, target, cur.cage, patch.mode, {
+          activeNode: cur.activeNode,
+          lockForEnvelopeTool: activeTool === 'envelope',
+        });
+        setSelectedObject(result);
+        (canvas as any).fire('envelope:updated', { target: result });
+        if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+        if (commit) {
+          pushHistory('Envelope Mode');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+      }
+    },
+    [selectedObject, canvas, activeTool, pushHistory, syncSymmetryMirrors]
+  );
+
+  const handleUpdateBlockShadow = useCallback(
+    async (
+      patch: Partial<BlockShadowParams> & { remove?: boolean },
+      commit: boolean = true
+    ) => {
+      if (!canvas || !selectedObject) return;
+      const target = resolveBlockShadowParent(canvas, selectedObject) || selectedObject;
+      if ((target as any).isGuideline || (target as any).isDimension || target.type === 'activeselection') return;
+
+      if (patch.remove) {
+        const res = removeBlockShadowFromTarget(canvas, target);
+        if (activeTool === 'block_shadow') {
+          res.parent.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: true,
+            lockMovementX: true,
+            lockMovementY: true,
+          });
+        }
+        canvas.setActiveObject(res.parent);
+        setSelectedObject(res.parent);
+        setProperties((prev) => ({
+          ...prev,
+          blockShadowOffsetX: DEFAULT_BLOCK_SHADOW_PARAMS.offsetX,
+          blockShadowOffsetY: DEFAULT_BLOCK_SHADOW_PARAMS.offsetY,
+          blockShadowColor: DEFAULT_BLOCK_SHADOW_PARAMS.color,
+          blockShadowSimplify: DEFAULT_BLOCK_SHADOW_PARAMS.simplify,
+          blockShadowRemoveHoles: DEFAULT_BLOCK_SHADOW_PARAMS.removeHoles,
+          blockShadowFromOutline: DEFAULT_BLOCK_SHADOW_PARAMS.fromOutline,
+          blockShadowExpandEnabled: DEFAULT_BLOCK_SHADOW_PARAMS.expandEnabled,
+          blockShadowExpandPx: DEFAULT_BLOCK_SHADOW_PARAMS.expandPx,
+          blockShadowOverprint: DEFAULT_BLOCK_SHADOW_PARAMS.overprint,
+        }));
+        (canvas as any).fire('block_shadow:updated', { target: res.parent });
+        canvas.requestRenderAll();
+        if (res.removed > 0 && commit) {
+          pushHistory('Clear Block Shadow');
+          socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+        }
+        return;
+      }
+
+      const cur = extractTargetBlockShadowForUi(canvas, target);
+      const base = cur.hasBlockShadow ? cur.params : DEFAULT_BLOCK_SHADOW_PARAMS;
+      const nextParams: BlockShadowParams = {
+        offsetX: patch.offsetX ?? properties.blockShadowOffsetX ?? base.offsetX,
+        offsetY: patch.offsetY ?? properties.blockShadowOffsetY ?? base.offsetY,
+        color: patch.color ?? properties.blockShadowColor ?? base.color,
+        simplify: patch.simplify ?? properties.blockShadowSimplify ?? base.simplify,
+        removeHoles: patch.removeHoles ?? properties.blockShadowRemoveHoles ?? base.removeHoles,
+        fromOutline: patch.fromOutline ?? properties.blockShadowFromOutline ?? base.fromOutline,
+        expandEnabled: patch.expandEnabled ?? properties.blockShadowExpandEnabled ?? base.expandEnabled,
+        expandPx:
+          patch.expandPx !== undefined
+            ? Math.max(0, Math.min(200, patch.expandPx))
+            : (properties.blockShadowExpandPx ?? base.expandPx),
+        overprint: patch.overprint ?? properties.blockShadowOverprint ?? base.overprint,
+      };
+
+      setProperties((prev) => ({
+        ...prev,
+        blockShadowOffsetX: nextParams.offsetX,
+        blockShadowOffsetY: nextParams.offsetY,
+        blockShadowColor: nextParams.color,
+        blockShadowSimplify: nextParams.simplify,
+        blockShadowRemoveHoles: nextParams.removeHoles,
+        blockShadowFromOutline: nextParams.fromOutline,
+        blockShadowExpandEnabled: nextParams.expandEnabled,
+        blockShadowExpandPx: nextParams.expandPx,
+        blockShadowOverprint: nextParams.overprint,
+      }));
+
+      await applyBlockShadowParamsToTarget(canvas, target, nextParams, {
+        lockForBlockShadowTool: activeTool === 'block_shadow',
+      });
+      (canvas as any).fire('block_shadow:updated', { target });
+      if (symmetryEditingConfigRef.current) void syncSymmetryMirrors();
+      if (commit) {
+        pushHistory('Block Shadow');
+        socketService.sendCanvasUpdate(canvas.toObject(SERIALIZE_PROPERTIES as any), 'modify');
+      }
+    },
+    [selectedObject, canvas, activeTool, properties, pushHistory, syncSymmetryMirrors]
   );
 
   const handleUpdateDimensionConfig = useCallback(
@@ -6340,6 +7169,12 @@ export default function App() {
         onClearSelectedConstraints={handleClearSelectedConstraints}
         onClearAllConstraints={handleClearAllConstraints}
         onShapeOperation={handleShapeOperation}
+        onUpdateShadow={handleUpdateShadow}
+        onUpdateContour={handleUpdateContour}
+        onUpdateBlend={handleUpdateBlend}
+        onUpdateExtrude={handleUpdateExtrude}
+        onUpdateEnvelope={handleUpdateEnvelope}
+        onUpdateBlockShadow={handleUpdateBlockShadow}
       />
 
       {/* Main Workspace (Left Toolbox + Center Canvas + Right Dockers) */}
@@ -6774,6 +7609,7 @@ export default function App() {
           onRefresh={() => {
             canvas?.renderAll();
             setSelectedObject(canvas?.getActiveObject() || null);
+            scheduleDebouncedHistory('Docker Edit');
           }}
         />
 
@@ -6799,6 +7635,8 @@ export default function App() {
         onSelectFill={handleSelectFill}
         onSelectStroke={handleSelectStroke}
         onOpenPaletteEditor={handleOpenPaletteEditor}
+        onAddExtractedColors={handleAddExtractedImageColors}
+        externalDragHover={paletteImageDragHover}
         theme={theme}
       />
 

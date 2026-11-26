@@ -3,6 +3,7 @@ import * as fabric from 'fabric';
 import { PageConfig, PropertyState, ThemeMode, ToolType } from '../../types';
 import { POPULAR_FONTS, FONT_SIZES } from '../../utils/fonts';
 import { ensureObjectId } from '../../utils/canvasHelpers';
+import { LiveEmbossSection } from '../EmbossControlsPanel';
 import { Plus, Trash2, Check, ExternalLink, Sparkles, Copy } from 'lucide-react';
 
 export type ExtendedDockerId =
@@ -797,6 +798,17 @@ export const ExtendedWindowDockers: React.FC<ExtendedWindowDockersProps> = ({
           <button onClick={() => onSelectTool?.('transparency')} className={`w-full py-1.5 px-2.5 border rounded text-left ${btnCls}`}>
             Transparency Tool
           </button>
+        </div>
+
+        {/* Emboss Parameters */}
+        <div className={`pt-2.5 border-t ${isDark ? 'border-zinc-700' : 'border-zinc-300'}`}>
+          <LiveEmbossSection
+            canvas={canvas}
+            selectedObject={selectedObject}
+            theme={theme}
+            defaultExpanded={true}
+            onRefresh={onRefresh}
+          />
         </div>
       </div>
     );
